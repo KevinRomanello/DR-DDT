@@ -94,7 +94,7 @@ namespace DDTImport
 
             return documento;
         }
-
+        
         private string DeterminaFormatoTracciato(string text)
         {
             if (text.Contains("INNERHOFER", StringComparison.OrdinalIgnoreCase))
