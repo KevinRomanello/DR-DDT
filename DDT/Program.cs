@@ -680,6 +680,7 @@ namespace DDTImport
             }
         }
 
+        // Metodo per scrivere in un file output per la verifica (Momentaneo)
         public static void WriteDDTToFile(DocumentoToImport doc)
         {
             string outputPath = "output.txt";
