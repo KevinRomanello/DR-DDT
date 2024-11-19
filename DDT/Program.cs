@@ -197,13 +197,14 @@ namespace DDTImport
                 var riga = new RigaDet
                 {
                     RigaNumero = i,
-                    ArticoloCodiceFornitore = fields[0].Trim(),    // Codice articolo
-                    ArticoloCodiceGenerico = fields[1].Trim(),     // Codice interno
-                    ArticoloDescrizione = fields[2].Trim(),        // Descrizione articolo
-                    PrezzoUnitario = decimal.Parse(fields[4].Trim(), CultureInfo.InvariantCulture),  // Prezzo unico/netto
-                    Qta = decimal.Parse(fields[5].Trim(), CultureInfo.InvariantCulture),             // Quantità
-                    PrezzoTotale = decimal.Parse(fields[6].Trim(), CultureInfo.InvariantCulture)     // Prezzo totale
+                    ArticoloCodiceFornitore = fields[0].Trim(),
+                    ArticoloCodiceGenerico = fields[1].Trim(),
+                    ArticoloDescrizione = fields[2].Trim(),
+                    PrezzoUnitario = ParseImporto(fields[4]),
+                    Qta = ParseImporto(fields[5]),
+                    PrezzoTotale = ParseImporto(fields[6])
                 };
+
 
                 // Aggiunge la riga al documento
                 documento.RigheDelDoc.Add(riga);
@@ -290,40 +291,27 @@ namespace DDTImport
                         RigaNumero = int.Parse(fields[columnIndexes["NUMERO_POS_DDT"]].Trim()),
                         ArticoloCodiceFornitore = fields[columnIndexes["CODICE_PRODOTTO"]].Trim(),
                         ArticoloDescrizione = fields[columnIndexes["DESCRIZIONE_PRODOTTO"]].Trim(),
-
-                        // Gestione colonne opzionali
                         Confezione = columnIndexes.ContainsKey("CONFEZIONE") ?
-                            fields[columnIndexes["CONFEZIONE"]].Trim() : "",
-
+                    fields[columnIndexes["CONFEZIONE"]].Trim() : "",
                         RifOrdineCliente = columnIndexes.ContainsKey("NUMERO_ORDINE_CLIENTE") ?
-                            fields[columnIndexes["NUMERO_ORDINE_CLIENTE"]].Trim() : "",
-
+                    fields[columnIndexes["NUMERO_ORDINE_CLIENTE"]].Trim() : "",
                         ArticoloCodiceGenerico = columnIndexes.ContainsKey("CODICE_ARTICOLO_CLIENTE") ?
-                            fields[columnIndexes["CODICE_ARTICOLO_CLIENTE"]].Trim() : "",
-
+                    fields[columnIndexes["CODICE_ARTICOLO_CLIENTE"]].Trim() : "",
                         UM = columnIndexes.ContainsKey("UNITA_DI_MISURA") ?
-                            fields[columnIndexes["UNITA_DI_MISURA"]].Trim() : "",
+                    fields[columnIndexes["UNITA_DI_MISURA"]].Trim() : "",
 
-                        // Parsing dei valori numerici con gestione cultura
-                        Qta = decimal.Parse(fields[columnIndexes["QUANTITA"]].Trim(),
-                            CultureInfo.InvariantCulture),
+                        // Parsing dei valori numerici con il nuovo metodo
+                        Qta = ParseImporto(fields[columnIndexes["QUANTITA"]]),
+                        PrezzoUnitario = ParseImporto(fields[columnIndexes["PREZZO_NETTO"]]),
+                        PrezzoTotale = ParseImporto(fields[columnIndexes["PREZZO_POSIZIONE"]]),
+                        IVAAliquota = ParseImporto(fields[columnIndexes["ALIQUOTA_IVA"]]),
 
-                        PrezzoUnitario = decimal.Parse(fields[columnIndexes["PREZZO_NETTO"]].Trim(),
-                            CultureInfo.InvariantCulture),
-
-                        PrezzoTotale = decimal.Parse(fields[columnIndexes["PREZZO_POSIZIONE"]].Trim(),
-                            CultureInfo.InvariantCulture),
-
-                        IVAAliquota = decimal.Parse(fields[columnIndexes["ALIQUOTA_IVA"]].Trim(),
-                            CultureInfo.InvariantCulture),
-
-                        // Campi opzionali aggiuntivi
                         RifOrdineFornitore = columnIndexes.ContainsKey("NUMERO_ORDINE") ?
-                            fields[columnIndexes["NUMERO_ORDINE"]].Trim() : "",
-
+                    fields[columnIndexes["NUMERO_ORDINE"]].Trim() : "",
                         ArticoloBarcode = columnIndexes.ContainsKey("CODICE_EAN") ?
-                            fields[columnIndexes["CODICE_EAN"]].Trim() : ""
+                    fields[columnIndexes["CODICE_EAN"]].Trim() : ""
                     };
+
 
                     documento.RigheDelDoc.Add(riga);
                 }
@@ -346,24 +334,18 @@ namespace DDTImport
         private DocumentoToImport ReadDDT_from_SVAI(string text)
         {
             Console.WriteLine("entrato per SVAI");
-            // Inizializza documento con dati fissi SVAI
             var documento = new DocumentoToImport
             {
                 Fornitore_AgileID = "SVAI",
-                FornitoreDescrizione = "SVAI",
+                FornitoreDescrizione = "SVAI Srl",
                 DocTipo = "DDT"
             };
 
-            // Splitta il testo in righe e rimuovi eventuali righe vuote
             var lines = text.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
 
-            // Verifica che ci siano almeno due righe (intestazione + dati)
             if (lines.Length < 2)
-            {
                 throw new InvalidOperationException("Il file non contiene dati sufficienti");
-            }
 
-            // Ottieni gli indici delle colonne dall'intestazione
             var headers = lines[0].Split(';');
             var columnIndexes = new Dictionary<string, int>();
 
@@ -372,28 +354,23 @@ namespace DDTImport
                 columnIndexes[headers[i].Trim()] = i;
             }
 
-            // Verifica la presenza delle colonne necessarie
             var requiredColumns = new[]
             {
-                "Numero_Bolla", "Data_Bolla", "Rag_Soc_1", "Indirizzo", "CAP", "Localita", "Provincia",
-                "Codice_Articolo", "Descrizione_Articolo", "Quantita", "Prezzo", "Netto_Riga", "IVA"
-            };
+        "Numero_Bolla", "Data_Bolla", "Rag_Soc_1", "Indirizzo", "CAP", "Localita", "Provincia",
+        "Codice_Articolo", "Descrizione_Articolo", "Quantita", "Prezzo", "Netto_Riga", "IVA"
+    };
 
             foreach (var column in requiredColumns)
             {
                 if (!columnIndexes.ContainsKey(column))
-                {
                     throw new InvalidOperationException($"Colonna richiesta mancante: {column}");
-                }
             }
 
-            // Processa le righe di dati (salta l'intestazione)
             for (int i = 1; i < lines.Length; i++)
             {
                 var fields = lines[i].Split(';');
                 if (fields.Length < headers.Length) continue;
 
-                // Aggiorna dati cliente e testata solo alla prima riga valida
                 if (documento.DocNumero == null)
                 {
                     documento.DocNumero = fields[columnIndexes["Numero_Bolla"]].Trim();
@@ -422,38 +399,27 @@ namespace DDTImport
                         RigaNumero = i,
                         RigaTipo = columnIndexes.ContainsKey("Tipo_Riga") ?
                             fields[columnIndexes["Tipo_Riga"]].Trim() : "",
-
                         ArticoloCodiceFornitore = fields[columnIndexes["Codice_Articolo"]].Trim(),
-
                         ArticoloMarca = columnIndexes.ContainsKey("Marca") ?
                             fields[columnIndexes["Marca"]].Trim() : "",
-
                         ArticoloDescrizione = fields[columnIndexes["Descrizione_Articolo"]].Trim(),
-
                         ArticoloCodiceGenerico = columnIndexes.ContainsKey("Codice Fornitore") ?
                             fields[columnIndexes["Codice Fornitore"]].Trim() : "",
 
-                        // Parsing dei valori numerici con gestione cultura
-                        Qta = decimal.Parse(fields[columnIndexes["Quantita"]].Trim(),
-                            CultureInfo.InvariantCulture),
+                        // Parsing di TUTTI i valori numerici con ParseImporto
+                        Qta = ParseImporto(fields[columnIndexes["Quantita"]]),
+                        PrezzoUnitario = ParseImporto(fields[columnIndexes["Prezzo"]]),
+                        PrezzoTotale = ParseImporto(fields[columnIndexes["Netto_Riga"]]),
+                        PrezzoTotaleScontato = ParseImporto(fields[columnIndexes["Netto_Riga"]]),
+                        IVAAliquota = ParseImporto(fields[columnIndexes["IVA"]]),
 
-                        PrezzoUnitario = decimal.Parse(fields[columnIndexes["Prezzo"]].Trim(),
-                            CultureInfo.InvariantCulture),
-
+                        // Parsing di tutti gli sconti con ParseImporto
                         Sconto1 = columnIndexes.ContainsKey("Sconto_1") ?
-                            decimal.Parse(fields[columnIndexes["Sconto_1"]].Trim(), CultureInfo.InvariantCulture) : 0,
-
+                            ParseImporto(fields[columnIndexes["Sconto_1"]]) : 0,
                         Sconto2 = columnIndexes.ContainsKey("Sconto_2") ?
-                            decimal.Parse(fields[columnIndexes["Sconto_2"]].Trim(), CultureInfo.InvariantCulture) : 0,
-
+                            ParseImporto(fields[columnIndexes["Sconto_2"]]) : 0,
                         Sconto3 = columnIndexes.ContainsKey("Sconto_3") ?
-                            decimal.Parse(fields[columnIndexes["Sconto_3"]].Trim(), CultureInfo.InvariantCulture) : 0,
-
-                        PrezzoTotaleScontato = decimal.Parse(fields[columnIndexes["Netto_Riga"]].Trim(),
-                            CultureInfo.InvariantCulture),
-
-                        IVAAliquota = decimal.Parse(fields[columnIndexes["IVA"]].Trim(),
-                            CultureInfo.InvariantCulture),
+                            ParseImporto(fields[columnIndexes["Sconto_3"]]) : 0,
 
                         RifOrdineFornitore = columnIndexes.ContainsKey("Ordine") ?
                             fields[columnIndexes["Ordine"]].Trim() : ""
@@ -464,19 +430,51 @@ namespace DDTImport
                 catch (Exception ex)
                 {
                     Console.WriteLine($"Errore nel parsing della riga {i + 1}: {ex.Message}");
-                    // Continua con la prossima riga invece di interrompere tutto il processo
                     continue;
                 }
             }
 
             if (documento.RigheDelDoc.Count == 0)
-            {
                 throw new InvalidOperationException("Nessuna riga valida trovata nel documento");
-            }
 
             return documento;
         }
 
+
+        private decimal ParseImporto(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return 0;
+
+            // Rimuovi spazi e caratteri non necessari
+            value = value.Trim();
+
+            // Gestione caso con due punti (es: 1.175.00)
+            if (value.Count(c => c == '.') > 1)
+            {
+                // Trova l'ultimo punto e sostituiscilo con virgola, rimuovi gli altri punti
+                int lastDotIndex = value.LastIndexOf('.');
+                value = value.Substring(0, lastDotIndex).Replace(".", "") +
+                       "," +
+                       value.Substring(lastDotIndex + 1);
+            }
+            else if (value.Contains("."))
+            {
+                // Se c'è un solo punto, sostituiscilo con la virgola
+                value = value.Replace(".", ",");
+            }
+
+            // Prova a parsare con la cultura corrente (virgola come separatore decimale)
+            if (decimal.TryParse(value, NumberStyles.Any, CultureInfo.CurrentCulture, out decimal result))
+                return result;
+
+            // Se fallisce, prova con la cultura invariante
+            if (decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out result))
+                return result;
+
+            Console.WriteLine($"Impossibile parsare il valore '{value}' come numero decimale. Uso 0 come default.");
+            return 0;
+        }
 
         private DocumentoToImport ReadDDT_from_SPAZIO(string text)
         {
@@ -490,7 +488,7 @@ namespace DDTImport
 
             return documento;
         }
-    }
+    }   
 
 
     public class Program
