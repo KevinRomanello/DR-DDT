@@ -166,15 +166,15 @@ namespace DDTImport
                 };
                 var spazioHeaders = new[] {
                     "CODICE ARTICOLO", "DESCRIZIONE", "QTA", "IM. UNI. NETTO",
-                    "Prezzo netto Tot.", "al. iva", "N? ORDINE"
+                    "PREZZO NETTO TOT.", "AL. IVA", "N? ORDINE"
                 };
 
                 // Normalizziamo le intestazioni del file per il confronto
-                var normalizedHeaders = headers.Select(h => h.Trim().ToUpper()).ToList();
+                var normalizedHeaders = headers.Select(h => h.Trim().ToUpper().Replace("\"", "")).ToList();
 
                 // Funzione per verificare se tutte le intestazioni attese sono presenti
                 bool MatchesHeaders(IEnumerable<string> expectedHeaders) =>
-                    expectedHeaders.All(h => normalizedHeaders.Contains(h.ToUpper()));
+                    expectedHeaders.All(h => normalizedHeaders.Contains(h.ToUpper()));                
 
                 // Se il file non usa il separatore ';' e non contiene header standard, consideriamo Innerhofer
                 if (!usesSemicolon)
@@ -202,6 +202,7 @@ namespace DDTImport
             }
         }
 
+        //C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\Spazio-esportazione (4).csv
         private DocumentoToImport ReadDDT_from_Innerhofer(string text)
         {
             var documento = new DocumentoToImport
@@ -577,14 +578,7 @@ namespace DDTImport
                     string descrizione = fields[columnIndexes["DESCRIZIONE"]]
                         .Replace("  ", " ")  // Rimuove spazi doppi
                         .Trim();
-
-                    // Cerca l'indice del numero ordine se esiste
-                    string rifOrdine = "";
-                    if (columnIndexes.TryGetValue("N? ORDINE", out int orderIndex))
-                    {
-                        rifOrdine = fields[orderIndex].Trim();
-                    }
-
+                                        
                     decimal prezzoUnitario = ParseImporto(fields[columnIndexes["IM. UNI. NETTO"]].Replace("?", ""));
                     decimal prezzoTotale = ParseImporto(fields[columnIndexes["Prezzo netto Tot."]].Replace("?", ""));
 
@@ -605,8 +599,7 @@ namespace DDTImport
                         PrezzoUnitario = prezzoUnitario,
                         PrezzoTotale = prezzoTotale,
                         PrezzoTotaleScontato = prezzoTotale,
-                        IVAAliquota = ParseImporto(fields[columnIndexes["al. iva"]].Replace("%", "")),
-                        RifOrdineFornitore = rifOrdine,
+                        IVAAliquota = ParseImporto(fields[columnIndexes["al. iva"]].Replace("%", ""))
                     };
 
                     documento.RigheDelDoc.Add(riga);
