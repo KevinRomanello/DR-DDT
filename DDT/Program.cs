@@ -90,6 +90,8 @@ namespace DDTImport
             }
 
             var documento = _formatReaders[formatoDelTracciato](text);
+            ValidateDestinatario(documento);
+
             Console.WriteLine($"Parsing completato. Righe elaborate: {documento.RigheDelDoc.Count}");
 
             return documento;
@@ -108,6 +110,55 @@ namespace DDTImport
 
             throw new InvalidOperationException("Impossibile determinare il formato del tracciato");
         }
+
+        private void ValidateDestinatario(DocumentoToImport doc)
+        {
+            // Verifica se il documento è destinato a ERREBI
+            bool isValidDestinatario = false;
+
+            // Lista di possibili varianti del nome ERREBI
+            var validNames = new[] {
+                "ERREBI",
+                "ERRE BI",
+                "ERRE-BI",
+                "ER.BI."
+            };
+
+            // Controlla nel campo cliente
+            if (doc.Cliente_AgileDesc != null)
+            {
+                isValidDestinatario = validNames.Any(name =>
+                    doc.Cliente_AgileDesc.ToUpper().Contains(name));
+            }
+
+            // Controlla anche nella destinazione merce
+            if (!isValidDestinatario && doc.DestinazioneMerce1 != null)
+            {
+                isValidDestinatario = validNames.Any(name =>
+                    doc.DestinazioneMerce1.ToUpper().Contains(name));
+            }
+
+            // Caso speciale: destinazione diversa da ERREBI
+            if (!isValidDestinatario && doc.Note != null &&
+                doc.Note.ToUpper().Contains("CONSEGNA DIRETTA"))
+            {
+                // In questo caso, verifichiamo che almeno il cliente originale sia ERREBI
+                isValidDestinatario = validNames.Any(name =>
+                    doc.Cliente_AgileDesc?.ToUpper().Contains(name) ?? false);
+            }
+
+            if (!isValidDestinatario)
+            {
+                //throw new InvalidOperationException(
+                //    "Il documento non sembra essere destinato a ERREBI o non è possibile verificare il destinatario");
+                Console.WriteLine("cliente non verificato");
+            }
+            else
+            {
+                Console.WriteLine("cliente verificato");
+            }
+        }
+
 
 
         private DocumentoToImport ReadDDT_from_Innerhofer(string text)
@@ -163,6 +214,8 @@ namespace DDTImport
 
         private DocumentoToImport ReadDDT_from_Wuerth(string text)
         {
+
+            Console.WriteLine("entarto per wuerth");
             // Inizializza documento con dati fissi Wuerth
             var documento = new DocumentoToImport
             {
@@ -171,44 +224,120 @@ namespace DDTImport
                 DocTipo = "DDT"
             };
 
-            var lines = text.Split('\n');
+            // Splitta il testo in righe e rimuovi eventuali righe vuote
+            var lines = text.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
 
+            // Verifica che ci siano almeno due righe (intestazione + dati)
+            if (lines.Length < 2)
+            {
+                throw new InvalidOperationException("Il file non contiene dati sufficienti");
+            }
+
+            // Ottieni gli indici delle colonne dall'intestazione
+            var headers = lines[0].Split(';');
+            var columnIndexes = new Dictionary<string, int>();
+
+            for (int i = 0; i < headers.Length; i++)
+            {
+                columnIndexes[headers[i].Trim()] = i;
+            }
+
+            // Verifica la presenza delle colonne necessarie
+            var requiredColumns = new[]
+            {
+                "CODICE_CLIENTE", "NOME_CLIENTE", "VIA", "CODICE_POSTALE", "CITTA", "PROVINCIA",
+                "DATA_DDT", "NUMERO_DDT", "NUMERO_POS_DDT", "CODICE_PRODOTTO", "DESCRIZIONE_PRODOTTO",
+                "QUANTITA", "PREZZO_NETTO", "PREZZO_POSIZIONE", "ALIQUOTA_IVA"
+            };
+
+            foreach (var column in requiredColumns)
+            {
+                if (!columnIndexes.ContainsKey(column))
+                {
+                    throw new InvalidOperationException($"Colonna richiesta mancante: {column}");
+                }
+            }
+
+            // Processa le righe di dati (salta l'intestazione)
             for (int i = 1; i < lines.Length; i++)
             {
-                if (string.IsNullOrWhiteSpace(lines[i])) continue;
-
                 var fields = lines[i].Split(';');
-                if (fields.Length < 40) continue;
+                if (fields.Length < headers.Length) continue;
 
                 // Aggiorna dati cliente e testata solo alla prima riga valida
                 if (documento.DocNumero == null)
                 {
-                    documento.Cliente_CodiceAssegnatoDalFornitore = fields[0].Trim();  // CODICE_CLIENTE
-                    documento.Cliente_AgileDesc = fields[1].Trim();                     // NOME_CLIENTE
-                    documento.DestinazioneMerce1 = fields[2].Trim();                   // VIA
-                    documento.DestinazioneMerce2 = $"{fields[3]} {fields[4]} ({fields[5]})"; // CODICE_POSTALE + CITTA + PROVINCIA
-                    documento.DocData = DateTime.Parse(fields[7].Trim());              // DATA_DDT
-                    documento.DocNumero = fields[8].Trim();                           // NUMERO_DDT
+                    documento.Cliente_CodiceAssegnatoDalFornitore = fields[columnIndexes["CODICE_CLIENTE"]].Trim();
+                    documento.Cliente_AgileDesc = fields[columnIndexes["NOME_CLIENTE"]].Trim();
+                    documento.DestinazioneMerce1 = fields[columnIndexes["VIA"]].Trim();
+                    documento.DestinazioneMerce2 = $"{fields[columnIndexes["CODICE_POSTALE"]].Trim()} " +
+                                                 $"{fields[columnIndexes["CITTA"]].Trim()} " +
+                                                 $"({fields[columnIndexes["PROVINCIA"]].Trim()})";
+
+                    // Parsing della data con gestione formato
+                    if (DateTime.TryParse(fields[columnIndexes["DATA_DDT"]].Trim(), out DateTime docData))
+                    {
+                        documento.DocData = docData;
+                    }
+
+                    documento.DocNumero = fields[columnIndexes["NUMERO_DDT"]].Trim();
                 }
 
-                var riga = new RigaDet
+                try
                 {
-                    RigaNumero = int.Parse(fields[9].Trim()),                         // NUMERO_POS_DDT
-                    ArticoloCodiceFornitore = fields[10].Trim(),                     // CODICE_PRODOTTO
-                    ArticoloDescrizione = fields[11].Trim(),                         // DESCRIZIONE_PRODOTTO
-                    Confezione = fields[12].Trim(),                                  // CONFEZIONE
-                    RifOrdineCliente = fields[14].Trim(),                           // NUMERO_ORDINE_CLIENTE
-                    ArticoloCodiceGenerico = fields[16].Trim(),                     // CODICE_ARTICOLO_CLIENTE
-                    UM = fields[17].Trim(),                                         // UNITA_DI_MISURA
-                    Qta = decimal.Parse(fields[18].Trim(), CultureInfo.InvariantCulture),  // QUANTITA
-                    PrezzoUnitario = decimal.Parse(fields[19].Trim(), CultureInfo.InvariantCulture),  // PREZZO_NETTO
-                    PrezzoTotale = decimal.Parse(fields[21].Trim(), CultureInfo.InvariantCulture),    // PREZZO_POSIZIONE
-                    IVAAliquota = decimal.Parse(fields[23].Trim(), CultureInfo.InvariantCulture),     // ALIQUOTA_IVA
-                    RifOrdineFornitore = fields[25].Trim(),                         // NUMERO_ORDINE
-                    ArticoloBarcode = fields[27].Trim(),                            // CODICE_EAN
-                };
+                    var riga = new RigaDet
+                    {
+                        RigaNumero = int.Parse(fields[columnIndexes["NUMERO_POS_DDT"]].Trim()),
+                        ArticoloCodiceFornitore = fields[columnIndexes["CODICE_PRODOTTO"]].Trim(),
+                        ArticoloDescrizione = fields[columnIndexes["DESCRIZIONE_PRODOTTO"]].Trim(),
 
-                documento.RigheDelDoc.Add(riga);
+                        // Gestione colonne opzionali
+                        Confezione = columnIndexes.ContainsKey("CONFEZIONE") ?
+                            fields[columnIndexes["CONFEZIONE"]].Trim() : "",
+
+                        RifOrdineCliente = columnIndexes.ContainsKey("NUMERO_ORDINE_CLIENTE") ?
+                            fields[columnIndexes["NUMERO_ORDINE_CLIENTE"]].Trim() : "",
+
+                        ArticoloCodiceGenerico = columnIndexes.ContainsKey("CODICE_ARTICOLO_CLIENTE") ?
+                            fields[columnIndexes["CODICE_ARTICOLO_CLIENTE"]].Trim() : "",
+
+                        UM = columnIndexes.ContainsKey("UNITA_DI_MISURA") ?
+                            fields[columnIndexes["UNITA_DI_MISURA"]].Trim() : "",
+
+                        // Parsing dei valori numerici con gestione cultura
+                        Qta = decimal.Parse(fields[columnIndexes["QUANTITA"]].Trim(),
+                            CultureInfo.InvariantCulture),
+
+                        PrezzoUnitario = decimal.Parse(fields[columnIndexes["PREZZO_NETTO"]].Trim(),
+                            CultureInfo.InvariantCulture),
+
+                        PrezzoTotale = decimal.Parse(fields[columnIndexes["PREZZO_POSIZIONE"]].Trim(),
+                            CultureInfo.InvariantCulture),
+
+                        IVAAliquota = decimal.Parse(fields[columnIndexes["ALIQUOTA_IVA"]].Trim(),
+                            CultureInfo.InvariantCulture),
+
+                        // Campi opzionali aggiuntivi
+                        RifOrdineFornitore = columnIndexes.ContainsKey("NUMERO_ORDINE") ?
+                            fields[columnIndexes["NUMERO_ORDINE"]].Trim() : "",
+
+                        ArticoloBarcode = columnIndexes.ContainsKey("CODICE_EAN") ?
+                            fields[columnIndexes["CODICE_EAN"]].Trim() : ""
+                    };
+
+                    documento.RigheDelDoc.Add(riga);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Errore nel parsing della riga {i + 1}: {ex.Message}");
+                    // Continua con la prossima riga invece di interrompere tutto il processo
+                    continue;
+                }
+            }
+
+            if (documento.RigheDelDoc.Count == 0)
+            {
+                throw new InvalidOperationException("Nessuna riga valida trovata nel documento");
             }
 
             return documento;
@@ -216,60 +345,138 @@ namespace DDTImport
 
         private DocumentoToImport ReadDDT_from_SVAI(string text)
         {
+            Console.WriteLine("entrato per SVAI");
             // Inizializza documento con dati fissi SVAI
             var documento = new DocumentoToImport
             {
                 Fornitore_AgileID = "SVAI",
-                FornitoreDescrizione = "SVAI Srl",
+                FornitoreDescrizione = "SVAI",
                 DocTipo = "DDT"
             };
 
-            var lines = text.Split('\n');
+            // Splitta il testo in righe e rimuovi eventuali righe vuote
+            var lines = text.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
 
+            // Verifica che ci siano almeno due righe (intestazione + dati)
+            if (lines.Length < 2)
+            {
+                throw new InvalidOperationException("Il file non contiene dati sufficienti");
+            }
+
+            // Ottieni gli indici delle colonne dall'intestazione
+            var headers = lines[0].Split(';');
+            var columnIndexes = new Dictionary<string, int>();
+
+            for (int i = 0; i < headers.Length; i++)
+            {
+                columnIndexes[headers[i].Trim()] = i;
+            }
+
+            // Verifica la presenza delle colonne necessarie
+            var requiredColumns = new[]
+            {
+                "Numero_Bolla", "Data_Bolla", "Rag_Soc_1", "Indirizzo", "CAP", "Localita", "Provincia",
+                "Codice_Articolo", "Descrizione_Articolo", "Quantita", "Prezzo", "Netto_Riga", "IVA"
+            };
+
+            foreach (var column in requiredColumns)
+            {
+                if (!columnIndexes.ContainsKey(column))
+                {
+                    throw new InvalidOperationException($"Colonna richiesta mancante: {column}");
+                }
+            }
+
+            // Processa le righe di dati (salta l'intestazione)
             for (int i = 1; i < lines.Length; i++)
             {
-                if (string.IsNullOrWhiteSpace(lines[i])) continue;
-
                 var fields = lines[i].Split(';');
-                if (fields.Length < 21) continue;
+                if (fields.Length < headers.Length) continue;
 
-                // Aggiorna dati testata solo alla prima riga valida
+                // Aggiorna dati cliente e testata solo alla prima riga valida
                 if (documento.DocNumero == null)
                 {
-                    documento.DocNumero = fields[0].Trim();                    // Numero_Bolla
-                    documento.DocData = DateTime.Parse(fields[1].Trim());      // Data_Bolla
-                    documento.Cliente_AgileDesc = fields[2].Trim();           // Rag_Soc_1
-                    string ragSoc2 = fields[3].Trim();                       // Rag_Soc_2
-                    if (!string.IsNullOrEmpty(ragSoc2))
+                    documento.DocNumero = fields[columnIndexes["Numero_Bolla"]].Trim();
+
+                    if (DateTime.TryParse(fields[columnIndexes["Data_Bolla"]].Trim(), out DateTime docData))
                     {
-                        documento.Cliente_AgileDesc += " " + ragSoc2;
+                        documento.DocData = docData;
                     }
-                    documento.DestinazioneMerce1 = fields[4].Trim();         // Indirizzo
-                    documento.DestinazioneMerce2 = $"{fields[5]} {fields[6]} ({fields[7]})"; // CAP + Localita + Provincia
+
+                    var ragSoc1 = fields[columnIndexes["Rag_Soc_1"]].Trim();
+                    var ragSoc2 = columnIndexes.ContainsKey("Rag_Soc_2") ?
+                        fields[columnIndexes["Rag_Soc_2"]].Trim() : "";
+                    documento.Cliente_AgileDesc = string.IsNullOrEmpty(ragSoc2) ?
+                        ragSoc1 : $"{ragSoc1} {ragSoc2}";
+
+                    documento.DestinazioneMerce1 = fields[columnIndexes["Indirizzo"]].Trim();
+                    documento.DestinazioneMerce2 = $"{fields[columnIndexes["CAP"]].Trim()} " +
+                                                 $"{fields[columnIndexes["Localita"]].Trim()} " +
+                                                 $"({fields[columnIndexes["Provincia"]].Trim()})";
                 }
 
-                var riga = new RigaDet
+                try
                 {
-                    RigaTipo = fields[8].Trim(),                            // Tipo_Riga
-                    ArticoloCodiceFornitore = fields[9].Trim(),            // Codice_Articolo
-                    ArticoloMarca = fields[10].Trim(),                     // Marca
-                    ArticoloDescrizione = fields[11].Trim(),               // Descrizione_Articolo
-                    ArticoloCodiceGenerico = fields[12].Trim(),            // Codice Fornitore
-                    Qta = decimal.Parse(fields[13].Trim(), CultureInfo.InvariantCulture),    // Quantita
-                    PrezzoUnitario = decimal.Parse(fields[14].Trim(), CultureInfo.InvariantCulture), // Prezzo
-                    Sconto1 = decimal.Parse(fields[15].Trim(), CultureInfo.InvariantCulture), // Sconto_1
-                    Sconto2 = decimal.Parse(fields[16].Trim(), CultureInfo.InvariantCulture), // Sconto_2
-                    Sconto3 = decimal.Parse(fields[17].Trim(), CultureInfo.InvariantCulture), // Sconto_3
-                    PrezzoTotaleScontato = decimal.Parse(fields[18].Trim(), CultureInfo.InvariantCulture), // Netto_Riga
-                    IVAAliquota = decimal.Parse(fields[19].Trim(), CultureInfo.InvariantCulture), // IVA
-                    RifOrdineFornitore = fields[20].Trim()                 // Ordine
-                };
+                    var riga = new RigaDet
+                    {
+                        RigaNumero = i,
+                        RigaTipo = columnIndexes.ContainsKey("Tipo_Riga") ?
+                            fields[columnIndexes["Tipo_Riga"]].Trim() : "",
 
-                documento.RigheDelDoc.Add(riga);
+                        ArticoloCodiceFornitore = fields[columnIndexes["Codice_Articolo"]].Trim(),
+
+                        ArticoloMarca = columnIndexes.ContainsKey("Marca") ?
+                            fields[columnIndexes["Marca"]].Trim() : "",
+
+                        ArticoloDescrizione = fields[columnIndexes["Descrizione_Articolo"]].Trim(),
+
+                        ArticoloCodiceGenerico = columnIndexes.ContainsKey("Codice Fornitore") ?
+                            fields[columnIndexes["Codice Fornitore"]].Trim() : "",
+
+                        // Parsing dei valori numerici con gestione cultura
+                        Qta = decimal.Parse(fields[columnIndexes["Quantita"]].Trim(),
+                            CultureInfo.InvariantCulture),
+
+                        PrezzoUnitario = decimal.Parse(fields[columnIndexes["Prezzo"]].Trim(),
+                            CultureInfo.InvariantCulture),
+
+                        Sconto1 = columnIndexes.ContainsKey("Sconto_1") ?
+                            decimal.Parse(fields[columnIndexes["Sconto_1"]].Trim(), CultureInfo.InvariantCulture) : 0,
+
+                        Sconto2 = columnIndexes.ContainsKey("Sconto_2") ?
+                            decimal.Parse(fields[columnIndexes["Sconto_2"]].Trim(), CultureInfo.InvariantCulture) : 0,
+
+                        Sconto3 = columnIndexes.ContainsKey("Sconto_3") ?
+                            decimal.Parse(fields[columnIndexes["Sconto_3"]].Trim(), CultureInfo.InvariantCulture) : 0,
+
+                        PrezzoTotaleScontato = decimal.Parse(fields[columnIndexes["Netto_Riga"]].Trim(),
+                            CultureInfo.InvariantCulture),
+
+                        IVAAliquota = decimal.Parse(fields[columnIndexes["IVA"]].Trim(),
+                            CultureInfo.InvariantCulture),
+
+                        RifOrdineFornitore = columnIndexes.ContainsKey("Ordine") ?
+                            fields[columnIndexes["Ordine"]].Trim() : ""
+                    };
+
+                    documento.RigheDelDoc.Add(riga);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Errore nel parsing della riga {i + 1}: {ex.Message}");
+                    // Continua con la prossima riga invece di interrompere tutto il processo
+                    continue;
+                }
+            }
+
+            if (documento.RigheDelDoc.Count == 0)
+            {
+                throw new InvalidOperationException("Nessuna riga valida trovata nel documento");
             }
 
             return documento;
         }
+
 
         private DocumentoToImport ReadDDT_from_SPAZIO(string text)
         {
@@ -384,6 +591,6 @@ namespace DDTImport
                 writer.WriteLine($"\nTotale righe nel documento: {doc.RigheDelDoc.Count}");
             }
         }
-    } //C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\Innerhofer DDT 23-24.csv
-}
-
+    } //C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\Innerhofer DDT 23-24.csv  
+}//C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\Wuerth CSV - DDT_8826546665_20240503_154226.csv
+//C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\SVAI ddt.csv
