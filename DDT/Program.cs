@@ -311,11 +311,6 @@ namespace DDTImport
             return 0;
         }
 
-
-        //C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\innerhofer E082_2024-01-0-80377.txt
-
-
-
         private DocumentoToImport ReadDDT_from_Wuerth(string text)
         {
             var documento = new DocumentoToImport
@@ -472,7 +467,6 @@ namespace DDTImport
                         Sconto2 = ParseImporto(fields[columnIndexes["Sconto_2"]]),
                         Sconto3 = ParseImporto(fields[columnIndexes["Sconto_3"]]),
                         RifOrdineFornitore = fields[columnIndexes["Ordine"]].Trim(),
-                        UM = "PZ" // Unità di misura predefinita se non specificata nel CSV
                     };
 
                     documento.RigheDelDoc.Add(riga);
