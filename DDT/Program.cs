@@ -122,89 +122,92 @@ namespace DDTImport
             }
         }
 
+
+
+        // Funazione che determina il formato del DDT tramite l'inetstazione
         private string DeterminaFormatoTracciato(string text)
         {
             try
             {
-                // Ottieni la prima riga (intestazione)
+                // Dividiamo il testo in righe e prendiamo la prima riga (intestazione)
+                // Poi la dividiamo in colonne usando il punto e virgola come separatore
                 var headers = text.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
                                  .FirstOrDefault()?
                                  .Split(';');
 
+                // Se non ci sono intestazioni, il file non è valido
                 if (headers == null || headers.Length == 0)
                     throw new InvalidOperationException("File vuoto o non valido");
 
-                // Array di intestazioni attese per ogni fornitore
+                // Definiamo le intestazioni che ci aspettiamo per ogni fornitore
+                // Queste sono le colonne caratteristiche di ciascun formato
                 var wuerthHeaders = new[] {
                     "CODICE_CLIENTE", "NOME_CLIENTE", "VIA", "CODICE_POSTALE", "CITTA", "PROVINCIA",
                     "PAESE", "DATA_DDT", "NUMERO_DDT"
                 };
-
                 var svaiHeaders = new[] {
                     "Numero_Bolla", "Data_Bolla", "Rag_Soc_1", "Rag_Soc_2", "Indirizzo",
                     "CAP", "Localita", "Provincia"
                 };
-
                 var innerhoferHeaders = new[] {
                     "Codice articolo", "Codice interno", "Descrizione articolo",
                     "Prezzo unico/netto", "Quantità", "Prezzo totale"
                 };
-
-               /* var spazioHeaders = new[] { 
+                // Spazio è commentato perché non implementato
+                /* var spazioHeaders = new[] { 
                 };*/
 
-                // Normalizza le intestazioni per il confronto (rimuovi spazi e rendi tutto maiuscolo)
+                // Normalizziamo le intestazioni del file per il confronto:
+                // - Rimuoviamo gli spazi iniziali e finali
+                // - Convertiamo tutto in maiuscolo per un confronto case-insensitive
                 var normalizedHeaders = headers.Select(h => h.Trim().ToUpper()).ToList();
 
-                // Conta quante intestazioni corrispondono per ogni fornitore
+                // Contiamo quante intestazioni del file corrispondono a quelle attese per ogni fornitore
+                // Più alto è il numero di corrispondenze, più è probabile che sia quel formato
                 int wuerthMatches = wuerthHeaders.Count(h =>
                     normalizedHeaders.Contains(h.ToUpper()));
-
                 int svaiMatches = svaiHeaders.Count(h =>
                     normalizedHeaders.Contains(h.ToUpper()));
-
                 int innerhoferMatches = innerhoferHeaders.Count(h =>
                     normalizedHeaders.Contains(h.ToUpper()));
 
-                //int spazioMatches = spazioHeaders.Count(h =>
-                //    normalizedHeaders.Contains(h.ToUpper()));
-
-                // Calcola le percentuali di corrispondenza
+                // Calcoliamo la percentuale di corrispondenza per ogni fornitore
+                // Es: se su 10 colonne attese ne troviamo 7, la percentuale è 0.7 (70%)
                 double wuerthPercentage = (double)wuerthMatches / wuerthHeaders.Length;
                 double svaiPercentage = (double)svaiMatches / svaiHeaders.Length;
                 double innerhoferPercentage = (double)innerhoferMatches / innerhoferHeaders.Length;
+                // Spazio è impostato a 0 per disabilitare il rilevamento automatico finchè non avremmo un loro DDT
                 double spazioPercentage = 0;
-                    //spazioHeaders.Length > 0 ?
-                //    (double)spazioMatches / spazioHeaders.Length : 0;
 
-                // Soglia minima di corrispondenza (es: 70%)
+                // Definiamo una soglia minima del 70% per considerare una corrispondenza valida
                 const double threshold = 0.7;
 
-                // Determina il fornitore in base alla maggiore corrispondenza
+                // Determiniamo il fornitore in base alla maggiore percentuale di corrispondenza
+                // Per essere valida, la percentuale deve:
+                // 1. Superare la soglia minima (threshold)
+                // 2. Essere la più alta tra tutte le percentuali
                 if (wuerthPercentage > threshold && wuerthPercentage >= Math.Max(Math.Max(svaiPercentage, innerhoferPercentage), spazioPercentage))
                     return "Wuerth";
-
                 if (svaiPercentage > threshold && svaiPercentage >= Math.Max(Math.Max(wuerthPercentage, innerhoferPercentage), spazioPercentage))
                     return "Svai";
-
                 if (innerhoferPercentage > threshold && innerhoferPercentage >= Math.Max(Math.Max(wuerthPercentage, svaiPercentage), spazioPercentage))
                     return "Innerhofer";
 
-                //if (spazioPercentage > threshold && spazioPercentage >= Math.Max(Math.Max(wuerthPercentage, svaiPercentage), innerhoferPercentage))
-                //    return "Spazio";
-
-                // Controllo aggiuntivo sul numero di colonne
-                if (headers.Length >= 35) // Wuerth ha molte colonne
+                // Se il metodo delle percentuali fallisce, proviamo a determinare il formato
+                // in base al numero totale di colonne, che è caratteristico per ogni fornitore
+                if (headers.Length >= 35) // Wuerth ha sempre più di 35 colonne
                     return "Wuerth";
-                if (headers.Length == 21) // SVAI ha 21 colonne
+                if (headers.Length == 21) // SVAI ha sempre esattamente 21 colonne
                     return "Svai";
-                if (headers.Length < 10) // Innerhofer ha poche colonne
+                if (headers.Length < 10)  // Innerhofer ha sempre meno di 10 colonne
                     return "Innerhofer";
 
+                // Se non riusciamo a determinare il formato in nessun modo, lanciamo un'eccezione
                 throw new InvalidOperationException("Impossibile determinare il formato del tracciato");
             }
             catch (Exception ex)
             {
+                // Logghiamo l'errore e lo rilanciamo
                 Console.WriteLine($"Errore nel determinare il formato: {ex.Message}");
                 throw;
             }
@@ -212,7 +215,7 @@ namespace DDTImport
 
 
         // Funzione che controllava il formato tramite il nome, magari aggiungere questa come controllo ulteriore potrebbe avere senso
-        
+
         //private string DeterminaFormatoTracciato(string text)
         //{
         //    if (text.Contains("INNERHOFER", StringComparison.OrdinalIgnoreCase))
@@ -231,11 +234,10 @@ namespace DDTImport
         // cerca di validare il destinatario ma non tutti lo hanno all'interno del DDT a quato pare
         // quindi si limita a notificare se è verificato o meno
         private void ValidateDestinatario(DocumentoToImport doc)
-        {
-            // Verifica se il documento è destinato a ERREBI
+        {            
             bool isValidDestinatario = false;
 
-            // Lista di possibili varianti del nome ERREBI
+            // Definiamo un array con tutte le possibili varianti del nome ERREBI
             var validNames = new[] {
                 "ERREBI",
                 "ERRE BI",
@@ -243,24 +245,27 @@ namespace DDTImport
                 "ER.BI."
             };
 
-            // Controlla nel campo cliente
+            // controlliamo se il nome ERREBI è presente nel campo Cliente_AgileDesc del documento
             if (doc.Cliente_AgileDesc != null)
             {
+                // Usiamo Any per cercare se almeno una delle varianti del nome è presente
                 isValidDestinatario = validNames.Any(name =>
                     doc.Cliente_AgileDesc.ToUpper().Contains(name));
             }
 
-            // Controlla anche nella destinazione merce
+            // se non abbiamo trovato ERREBI nel campo cliente controlliamo nel campo DestinazioneMerce1
+            // Questo gestisce i casi in cui l'indirizzo di consegna è diverso dall'intestazione
             if (!isValidDestinatario && doc.DestinazioneMerce1 != null)
             {
                 isValidDestinatario = validNames.Any(name =>
                     doc.DestinazioneMerce1.ToUpper().Contains(name));
-            }           
+            }
 
+            // Gestione del risultato della validazione
             if (!isValidDestinatario)
             {
-                //throw new InvalidOperationException(
-                //    "Il documento non sembra essere destinato a ERREBI o non è possibile verificare il destinatario");
+                // In caso di destinatario non valido, invece di lanciare un'eccezione stampiamo solo un messaggio di avviso(momentaneo)
+                // Questo permette di continuare l'elaborazione anche se il cliente non è verificato
                 Console.WriteLine("cliente non verificato");
             }
             else
@@ -466,9 +471,9 @@ namespace DDTImport
 
             var requiredColumns = new[]
             {
-        "Numero_Bolla", "Data_Bolla", "Rag_Soc_1", "Indirizzo", "CAP", "Localita", "Provincia",
-        "Codice_Articolo", "Descrizione_Articolo", "Quantita", "Prezzo", "Netto_Riga", "IVA"
-    };
+                "Numero_Bolla", "Data_Bolla", "Rag_Soc_1", "Indirizzo", "CAP", "Localita", "Provincia",
+                "Codice_Articolo", "Descrizione_Articolo", "Quantita", "Prezzo", "Netto_Riga", "IVA"
+            };
 
             foreach (var column in requiredColumns)
             {
@@ -555,7 +560,7 @@ namespace DDTImport
             return documento;
         }
 
-
+        // Sistema i numeri con . e ,
         private decimal ParseImporto(string value)
         {
             if (string.IsNullOrWhiteSpace(value))
