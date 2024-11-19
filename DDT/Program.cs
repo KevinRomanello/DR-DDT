@@ -39,7 +39,6 @@ namespace DDTImport
     {
         public int RigaNumero { get; set; }
         public string RigaTipo { get; set; }
-        public string Cliente { get; set; }
         public string NumeroDoc { get; set; }
         public DateTime DocData { get; set; }
         public string ArticoloCodiceGenerico { get; set; }
@@ -244,26 +243,33 @@ namespace DDTImport
                 DocTipo = "DDT",
                 RigheDelDoc = new List<RigaDet>()
             };
-
+                        
             var lines = text.Split('\n');
+
             foreach (var line in lines)
             {
                 if (string.IsNullOrWhiteSpace(line)) continue;
 
+                // Debug: Stampa la riga corrente
+                Console.WriteLine($"Elaborazione riga: {line}");
+
+                if (string.IsNullOrWhiteSpace(line)) continue;
+
                 var tipoRecord = line.Substring(0, 3);
+
+                Console.WriteLine($"Tipo record: {tipoRecord}");
 
                 switch (tipoRecord)
                 {
                     case "TAD":
                         documento.Cliente_CodiceAssegnatoDalFornitore = line.Substring(13, 4).Trim();
                         documento.DocNumero = line.Substring(28, 9).Trim();
-                        documento.DocData = DateTime.ParseExact(line.Substring(37, 8), "yyyyMMdd", null);
                         documento.FornitoreDescrizione = line.Substring(57, 50).Trim();
                         documento.DestinazioneMerce1 = line.Substring(107, 30).Trim();
+                        Console.WriteLine($"TAD elaborato: Numero {documento.DocNumero}, Cliente {documento.Cliente_CodiceAssegnatoDalFornitore}");
                         break;
 
                     case "RAD":
-                        if (line[54] != 'A') continue;
 
                         var riga = new RigaDet
                         {
@@ -276,18 +282,24 @@ namespace DDTImport
                             RifOrdineCliente = line.Substring(195, 10).Trim(),
                         };
                         documento.RigheDelDoc.Add(riga);
+                        Console.WriteLine($"RAD elaborato: Riga tipo {riga.RigaTipo} Articolo {riga.ArticoloCodiceFornitore}, Qta {riga.Qta}");
+                        break;
+
+                    default:
+                        Console.WriteLine("Tipo record non riconosciuto.");
                         break;
                 }
             }
-
+            //C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\innerhofer E082_2024-01-0-80377.txt
             return documento;
         }
 
 
+
         private DocumentoToImport ReadDDT_from_Wuerth(string text)
         {
+            Console.WriteLine("entrato per wuerth");
 
-            Console.WriteLine("entarto per wuerth");
             // Inizializza documento con dati fissi Wuerth
             var documento = new DocumentoToImport
             {
@@ -345,7 +357,7 @@ namespace DDTImport
                     documento.DestinazioneMerce2 = $"{fields[columnIndexes["CODICE_POSTALE"]].Trim()} " +
                                                  $"{fields[columnIndexes["CITTA"]].Trim()} " +
                                                  $"({fields[columnIndexes["PROVINCIA"]].Trim()})";
-                    
+
                     documento.DocNumero = fields[columnIndexes["NUMERO_DDT"]].Trim();
                 }
 
@@ -356,14 +368,10 @@ namespace DDTImport
                         RigaNumero = int.Parse(fields[columnIndexes["NUMERO_POS_DDT"]].Trim()),
                         ArticoloCodiceFornitore = fields[columnIndexes["CODICE_PRODOTTO"]].Trim(),
                         ArticoloDescrizione = fields[columnIndexes["DESCRIZIONE_PRODOTTO"]].Trim(),
-                        Confezione = columnIndexes.ContainsKey("CONFEZIONE") ?
-                    fields[columnIndexes["CONFEZIONE"]].Trim() : "",
-                        RifOrdineCliente = columnIndexes.ContainsKey("NUMERO_ORDINE_CLIENTE") ?
-                    fields[columnIndexes["NUMERO_ORDINE_CLIENTE"]].Trim() : "",
-                        ArticoloCodiceGenerico = columnIndexes.ContainsKey("CODICE_ARTICOLO_CLIENTE") ?
-                    fields[columnIndexes["CODICE_ARTICOLO_CLIENTE"]].Trim() : "",
-                        UM = columnIndexes.ContainsKey("UNITA_DI_MISURA") ?
-                    fields[columnIndexes["UNITA_DI_MISURA"]].Trim() : "",
+                        Confezione = fields[columnIndexes["CONFEZIONE"]].Trim(),
+                        RifOrdineCliente = fields[columnIndexes["NUMERO_ORDINE_CLIENTE"]].Trim(),
+                        ArticoloCodiceGenerico = fields[columnIndexes["CODICE_ARTICOLO_CLIENTE"]].Trim(),
+                        UM = fields[columnIndexes["UNITA_DI_MISURA"]].Trim(),
 
                         // Parsing dei valori numerici con il nuovo metodo
                         Qta = ParseImporto(fields[columnIndexes["QUANTITA"]]),
@@ -371,19 +379,15 @@ namespace DDTImport
                         PrezzoTotale = ParseImporto(fields[columnIndexes["PREZZO_POSIZIONE"]]),
                         IVAAliquota = ParseImporto(fields[columnIndexes["ALIQUOTA_IVA"]]),
 
-                        RifOrdineFornitore = columnIndexes.ContainsKey("NUMERO_ORDINE") ?
-                    fields[columnIndexes["NUMERO_ORDINE"]].Trim() : "",
-                        ArticoloBarcode = columnIndexes.ContainsKey("CODICE_EAN") ?
-                    fields[columnIndexes["CODICE_EAN"]].Trim() : ""
+                        RifOrdineFornitore = fields[columnIndexes["NUMERO_ORDINE"]].Trim(),
+                        ArticoloBarcode = fields[columnIndexes["CODICE_EAN"]].Trim()
                     };
-
 
                     documento.RigheDelDoc.Add(riga);
                 }
                 catch (Exception ex)
                 {
                     Console.WriteLine($"Errore nel parsing della riga {i + 1}: {ex.Message}");
-                    // Continua con la prossima riga invece di interrompere tutto il processo
                     continue;
                 }
             }
@@ -396,9 +400,11 @@ namespace DDTImport
             return documento;
         }
 
+
         private DocumentoToImport ReadDDT_from_SVAI(string text)
         {
-            Console.WriteLine("entrato per SVAI");
+            Console.WriteLine("Entrato per SVAI");
+
             var documento = new DocumentoToImport
             {
                 Fornitore_AgileID = "SVAI",
@@ -407,15 +413,20 @@ namespace DDTImport
             };
 
             var lines = text.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+
+            // Verifica che ci siano almeno due righe (intestazione + dati)
             if (lines.Length < 2)
                 throw new InvalidOperationException("Il file non contiene dati sufficienti");
 
+            // Ottieni gli indici delle colonne dall'intestazione
             var headers = lines[0].Split(';');
             var columnIndexes = new Dictionary<string, int>();
-
             for (int i = 0; i < headers.Length; i++)
+            {
                 columnIndexes[headers[i].Trim()] = i;
+            }
 
+            // Verifica la presenza delle colonne obbligatorie
             var requiredColumns = new[]
             {
                 "Numero_Bolla", "Data_Bolla", "Rag_Soc_1", "Codice_Articolo",
@@ -423,9 +434,14 @@ namespace DDTImport
             };
 
             foreach (var column in requiredColumns)
+            {
                 if (!columnIndexes.ContainsKey(column))
+                {
                     throw new InvalidOperationException($"Colonna richiesta mancante: {column}");
+                }
+            }
 
+            // Processa le righe di dati (salta l'intestazione)
             for (int i = 1; i < lines.Length; i++)
             {
                 var fields = lines[i].Split(';');
@@ -434,10 +450,10 @@ namespace DDTImport
                 try
                 {
                     // Gestione del cliente combinando Rag_Soc_1 e Rag_Soc_2 se presente
-                    string cliente = fields[columnIndexes["Rag_Soc_1"]].Trim();
-                    if (columnIndexes.ContainsKey("Rag_Soc_2"))
+                    var cliente = fields[columnIndexes["Rag_Soc_1"]].Trim();
+                    if (columnIndexes.TryGetValue("Rag_Soc_2", out var ragSoc2Index))
                     {
-                        string ragSoc2 = fields[columnIndexes["Rag_Soc_2"]].Trim();
+                        var ragSoc2 = fields[ragSoc2Index].Trim();
                         if (!string.IsNullOrWhiteSpace(ragSoc2))
                         {
                             cliente = $"{cliente} {ragSoc2}";
@@ -447,30 +463,24 @@ namespace DDTImport
                     var riga = new RigaDet
                     {
                         RigaNumero = i,
-                        Cliente = cliente,
-                        NumeroDoc = fields[columnIndexes["Numero_Bolla"]].Trim(),                        
-                        RigaTipo = columnIndexes.ContainsKey("Tipo_Riga") ?
-                            fields[columnIndexes["Tipo_Riga"]].Trim() : "",
+                        NumeroDoc = fields[columnIndexes["Numero_Bolla"]].Trim(),
+                        RigaTipo = fields[columnIndexes["Tipo_Riga"]].Trim(),
                         ArticoloCodiceFornitore = fields[columnIndexes["Codice_Articolo"]].Trim(),
-                        ArticoloMarca = columnIndexes.ContainsKey("Marca") ?
-                            fields[columnIndexes["Marca"]].Trim() : "",
+                        ArticoloMarca = fields[columnIndexes["Marca"]].Trim(),
                         ArticoloDescrizione = fields[columnIndexes["Descrizione_Articolo"]].Trim(),
-                        ArticoloCodiceGenerico = columnIndexes.ContainsKey("Codice Fornitore") ?
-                            fields[columnIndexes["Codice Fornitore"]].Trim() : "",
+                        ArticoloCodiceGenerico = fields[columnIndexes["Codice Fornitore"]].Trim(),
                         Qta = ParseImporto(fields[columnIndexes["Quantita"]]),
                         PrezzoUnitario = ParseImporto(fields[columnIndexes["Prezzo"]]),
                         PrezzoTotale = ParseImporto(fields[columnIndexes["Netto_Riga"]]),
                         PrezzoTotaleScontato = ParseImporto(fields[columnIndexes["Netto_Riga"]]),
                         IVAAliquota = ParseImporto(fields[columnIndexes["IVA"]]),
-                        Sconto1 = columnIndexes.ContainsKey("Sconto_1") ?
-                            ParseImporto(fields[columnIndexes["Sconto_1"]]) : 0,
-                        Sconto2 = columnIndexes.ContainsKey("Sconto_2") ?
-                            ParseImporto(fields[columnIndexes["Sconto_2"]]) : 0,
-                        Sconto3 = columnIndexes.ContainsKey("Sconto_3") ?
-                            ParseImporto(fields[columnIndexes["Sconto_3"]]) : 0,
-                        RifOrdineFornitore = columnIndexes.ContainsKey("Ordine") ?
-                            fields[columnIndexes["Ordine"]].Trim() : ""
+                        Sconto1 = ParseImporto(fields[columnIndexes["Sconto_1"]]),
+                        Sconto2 = ParseImporto(fields[columnIndexes["Sconto_2"]]),
+                        Sconto3 = ParseImporto(fields[columnIndexes["Sconto_3"]]),
+                        RifOrdineFornitore = fields[columnIndexes["Ordine"]].Trim()
                     };
+
+
 
                     documento.RigheDelDoc.Add(riga);
                 }
@@ -482,10 +492,13 @@ namespace DDTImport
             }
 
             if (documento.RigheDelDoc.Count == 0)
+            {
                 throw new InvalidOperationException("Nessuna riga valida trovata nel documento");
+            }
 
             return documento;
         }
+
 
         private DocumentoToImport ReadDDT_from_SPAZIO(string text)
         {
@@ -696,7 +709,6 @@ namespace DDTImport
                     writer.WriteLine($"\n=== RIGA {i + 1} ===");
                     writer.WriteLine($"Numero Riga: {riga.RigaNumero}");
                     writer.WriteLine($"Tipo Riga: {riga.RigaTipo}");
-                    writer.WriteLine($"Cliente: {riga.Cliente}");
                     writer.WriteLine($"Articolo - Codice Generico: {riga.ArticoloCodiceGenerico}");
                     writer.WriteLine($"Articolo - Codice Fornitore: {riga.ArticoloCodiceFornitore}");
                     writer.WriteLine($"Articolo - Codice Produttore: {riga.ArticoloCodiceProduttore}");
