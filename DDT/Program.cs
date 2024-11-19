@@ -31,7 +31,7 @@ namespace DDTImport
 
         public string TrasportoData { get; set; }
         public string TrasportoNote { get; set; }
-
+        public bool Verificato { get; set; }
         public List<RigaDet> RigheDelDoc { get; set; } = new List<RigaDet>();
     }
 
@@ -153,9 +153,10 @@ namespace DDTImport
                     "Codice articolo", "Codice interno", "Descrizione articolo",
                     "Prezzo unico/netto", "Quantità", "Prezzo totale"
                 };
-                // Spazio è commentato perché non implementato
-                /* var spazioHeaders = new[] { 
-                };*/
+                var spazioHeaders = new[] {
+                    "CODICE ARTICOLO", "DESCRIZIONE", "QTA", "IM. UNI. NETTO",
+                    "Prezzo netto Tot.", "al. iva", "N ORDINE"
+                };
 
                 // Normalizziamo le intestazioni del file per il confronto:
                 // - Rimuoviamo gli spazi iniziali e finali
@@ -166,9 +167,14 @@ namespace DDTImport
                 // Più alto è il numero di corrispondenze, più è probabile che sia quel formato
                 int wuerthMatches = wuerthHeaders.Count(h =>
                     normalizedHeaders.Contains(h.ToUpper()));
+
                 int svaiMatches = svaiHeaders.Count(h =>
                     normalizedHeaders.Contains(h.ToUpper()));
+
                 int innerhoferMatches = innerhoferHeaders.Count(h =>
+                    normalizedHeaders.Contains(h.ToUpper()));
+
+                int spazioMatches = spazioHeaders.Count(h =>
                     normalizedHeaders.Contains(h.ToUpper()));
 
                 // Calcoliamo la percentuale di corrispondenza per ogni fornitore
@@ -176,8 +182,7 @@ namespace DDTImport
                 double wuerthPercentage = (double)wuerthMatches / wuerthHeaders.Length;
                 double svaiPercentage = (double)svaiMatches / svaiHeaders.Length;
                 double innerhoferPercentage = (double)innerhoferMatches / innerhoferHeaders.Length;
-                // Spazio è impostato a 0 per disabilitare il rilevamento automatico finchè non avremmo un loro DDT
-                double spazioPercentage = 0;
+                double spazioPercentage = (double)spazioMatches / spazioHeaders.Length;
 
                 // Definiamo una soglia minima del 70% per considerare una corrispondenza valida
                 const double threshold = 0.7;
@@ -192,15 +197,8 @@ namespace DDTImport
                     return "Svai";
                 if (innerhoferPercentage > threshold && innerhoferPercentage >= Math.Max(Math.Max(wuerthPercentage, svaiPercentage), spazioPercentage))
                     return "Innerhofer";
-
-                // Se il metodo delle percentuali fallisce, proviamo a determinare il formato
-                // in base al numero totale di colonne, che è caratteristico per ogni fornitore
-                if (headers.Length >= 35) // Wuerth ha sempre più di 35 colonne
-                    return "Wuerth";
-                if (headers.Length == 21) // SVAI ha sempre esattamente 21 colonne
-                    return "Svai";
-                if (headers.Length < 10)  // Innerhofer ha sempre meno di 10 colonne
-                    return "Innerhofer";
+                if (spazioPercentage > threshold && spazioPercentage >= Math.Max(Math.Max(Math.Max(wuerthPercentage, svaiPercentage), innerhoferPercentage), 0))
+                    return "Spazio";                              
 
                 // Se non riusciamo a determinare il formato in nessun modo, lanciamo un'eccezione
                 throw new InvalidOperationException("Impossibile determinare il formato del tracciato");
@@ -267,10 +265,12 @@ namespace DDTImport
                 // In caso di destinatario non valido, invece di lanciare un'eccezione stampiamo solo un messaggio di avviso(momentaneo)
                 // Questo permette di continuare l'elaborazione anche se il cliente non è verificato
                 Console.WriteLine("cliente non verificato");
+                doc.Verificato = false;
             }
             else
             {
                 Console.WriteLine("cliente verificato");
+                doc.Verificato = true;
             }
         }
 
@@ -560,6 +560,81 @@ namespace DDTImport
             return documento;
         }
 
+        private DocumentoToImport ReadDDT_from_SPAZIO(string text)
+        {
+            Console.WriteLine("entrato per SPAZIO");
+            var documento = new DocumentoToImport
+            {
+                Fornitore_AgileID = "SPAZIO",
+                FornitoreDescrizione = "Spazio",
+                DocTipo = "DDT"
+            };
+
+            var lines = text.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+
+            if (lines.Length < 2)
+            {
+                throw new InvalidOperationException("Il file non contiene dati sufficienti");
+            }
+
+            var headers = lines[0].Split(';');
+            var columnIndexes = new Dictionary<string, int>();
+
+            for (int i = 0; i < headers.Length; i++)
+            {
+                columnIndexes[headers[i].Trim()] = i;
+            }
+
+            var requiredColumns = new[]
+            {
+                "CODICE ARTICOLO", "DESCRIZIONE", "QTA", "IM. UNI. NETTO",
+                "Prezzo netto Tot.", "al. iva", "N ORDINE"
+            };
+
+            foreach (var column in requiredColumns)
+            {
+                if (!columnIndexes.ContainsKey(column))
+                {
+                    throw new InvalidOperationException($"Colonna richiesta mancante: {column}");
+                }
+            }
+
+            for (int i = 1; i < lines.Length; i++)
+            {
+                var fields = lines[i].Split(';');
+                if (fields.Length < headers.Length) continue;
+
+                try
+                {
+                    var riga = new RigaDet
+                    {
+                        RigaNumero = i,
+                        ArticoloCodiceFornitore = fields[columnIndexes["CODICE ARTICOLO"]].Trim(),
+                        ArticoloDescrizione = fields[columnIndexes["DESCRIZIONE"]].Trim(),
+                        Qta = ParseImporto(fields[columnIndexes["QTA"]]),
+                        PrezzoUnitario = ParseImporto(fields[columnIndexes["IM. UNI. NETTO"]]),
+                        PrezzoTotale = ParseImporto(fields[columnIndexes["Prezzo netto Tot."]]),
+                        IVAAliquota = ParseImporto(fields[columnIndexes["al. iva"]]),
+                        RifOrdineFornitore = fields[columnIndexes["N ORDINE"]].Trim()
+                    };
+
+                    documento.RigheDelDoc.Add(riga);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Errore nel parsing della riga {i + 1}: {ex.Message}");
+                    continue;
+                }
+            }
+
+            if (documento.RigheDelDoc.Count == 0)
+            {
+                throw new InvalidOperationException("Nessuna riga valida trovata nel documento");
+            }
+
+            return documento;
+        }
+
         // Sistema i numeri con . e ,
         private decimal ParseImporto(string value)
         {
@@ -594,20 +669,7 @@ namespace DDTImport
 
             Console.WriteLine($"Impossibile parsare il valore '{value}' come numero decimale. Uso 0 come default.");
             return 0;
-        }
-
-        private DocumentoToImport ReadDDT_from_SPAZIO(string text)
-        {
-            // Implementazione placeholder per Wuerth
-            var documento = new DocumentoToImport
-            {
-                Fornitore_AgileID = "SPAZIO",
-                DocTipo = "DDT"
-                // Implementare la logica di parsing specifica per Wuerth
-            };
-
-            return documento;
-        }
+        }        
     }   
 
 
@@ -714,3 +776,4 @@ namespace DDTImport
     } //C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\Innerhofer DDT 23-24.csv  
 }//C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\Wuerth CSV - DDT_8826546665_20240503_154226.csv
 //C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\SVAI ddt.csv
+//C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\Spazio-esportazione (4).csv
