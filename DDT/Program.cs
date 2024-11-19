@@ -82,34 +82,147 @@ namespace DDTImport
         {
             Console.WriteLine($"\nInizio elaborazione {fileName}...");
 
-            if (string.IsNullOrEmpty(formatoDelTracciato))
+            try
             {
-                Console.WriteLine("Rilevamento automatico formato...");
-                formatoDelTracciato = DeterminaFormatoTracciato(fileName);
-                Console.WriteLine($"Formato rilevato: {formatoDelTracciato}");
+                // Se non è specificato il formato, lo rileva automaticamente
+                if (string.IsNullOrEmpty(formatoDelTracciato))
+                {
+                    Console.WriteLine("Rilevamento automatico formato...");
+                    formatoDelTracciato = DeterminaFormatoTracciato(text);
+                    Console.WriteLine($"Formato rilevato: {formatoDelTracciato}");
+                }
+                else
+                {
+                    Console.WriteLine($"Utilizzo formato specificato: {formatoDelTracciato}");
+                }
+
+                // Usa il formato per selezionare il parser appropriato
+                var documento = _formatReaders[formatoDelTracciato](text);
+                Console.WriteLine($"Parsing completato. Righe elaborate: {documento.RigheDelDoc.Count}");
+
+                // Verifica che ci siano righe
+                if (documento.RigheDelDoc.Count == 0)
+                {
+                    throw new InvalidOperationException("Nessuna riga trovata nel documento");
+                }
+
+                // Validazione aggiuntiva sul destinatario
+                ValidateDestinatario(documento);
+
+                return documento;
             }
-
-            var documento = _formatReaders[formatoDelTracciato](text);
-            ValidateDestinatario(documento);
-
-            Console.WriteLine($"Parsing completato. Righe elaborate: {documento.RigheDelDoc.Count}");
-
-            return documento;
+            catch (KeyNotFoundException)
+            {
+                throw new InvalidOperationException("Formato del tracciato non supportato");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Errore nell'elaborazione del DDT: {ex.Message}");
+                throw;
+            }
         }
-        
+
         private string DeterminaFormatoTracciato(string text)
         {
-            if (text.Contains("INNERHOFER", StringComparison.OrdinalIgnoreCase))
-                return "Innerhofer";
-            if (text.Contains("WUERTH", StringComparison.OrdinalIgnoreCase))
-                return "Wuerth";
-            if (text.Contains("SVAI", StringComparison.OrdinalIgnoreCase))
-                return "Svai";
-            if (text.Contains("SPAZIO", StringComparison.OrdinalIgnoreCase))
-                return "Spazio";
+            try
+            {
+                // Ottieni la prima riga (intestazione)
+                var headers = text.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
+                                 .FirstOrDefault()?
+                                 .Split(';');
 
-            throw new InvalidOperationException("Impossibile determinare il formato del tracciato");
+                if (headers == null || headers.Length == 0)
+                    throw new InvalidOperationException("File vuoto o non valido");
+
+                // Array di intestazioni attese per ogni fornitore
+                var wuerthHeaders = new[] {
+                    "CODICE_CLIENTE", "NOME_CLIENTE", "VIA", "CODICE_POSTALE", "CITTA", "PROVINCIA",
+                    "PAESE", "DATA_DDT", "NUMERO_DDT"
+                };
+
+                var svaiHeaders = new[] {
+                    "Numero_Bolla", "Data_Bolla", "Rag_Soc_1", "Rag_Soc_2", "Indirizzo",
+                    "CAP", "Localita", "Provincia"
+                };
+
+                var innerhoferHeaders = new[] {
+                    "Codice articolo", "Codice interno", "Descrizione articolo",
+                    "Prezzo unico/netto", "Quantità", "Prezzo totale"
+                };
+
+               /* var spazioHeaders = new[] { 
+                };*/
+
+                // Normalizza le intestazioni per il confronto (rimuovi spazi e rendi tutto maiuscolo)
+                var normalizedHeaders = headers.Select(h => h.Trim().ToUpper()).ToList();
+
+                // Conta quante intestazioni corrispondono per ogni fornitore
+                int wuerthMatches = wuerthHeaders.Count(h =>
+                    normalizedHeaders.Contains(h.ToUpper()));
+
+                int svaiMatches = svaiHeaders.Count(h =>
+                    normalizedHeaders.Contains(h.ToUpper()));
+
+                int innerhoferMatches = innerhoferHeaders.Count(h =>
+                    normalizedHeaders.Contains(h.ToUpper()));
+
+                //int spazioMatches = spazioHeaders.Count(h =>
+                //    normalizedHeaders.Contains(h.ToUpper()));
+
+                // Calcola le percentuali di corrispondenza
+                double wuerthPercentage = (double)wuerthMatches / wuerthHeaders.Length;
+                double svaiPercentage = (double)svaiMatches / svaiHeaders.Length;
+                double innerhoferPercentage = (double)innerhoferMatches / innerhoferHeaders.Length;
+                double spazioPercentage = 0;
+                    //spazioHeaders.Length > 0 ?
+                //    (double)spazioMatches / spazioHeaders.Length : 0;
+
+                // Soglia minima di corrispondenza (es: 70%)
+                const double threshold = 0.7;
+
+                // Determina il fornitore in base alla maggiore corrispondenza
+                if (wuerthPercentage > threshold && wuerthPercentage >= Math.Max(Math.Max(svaiPercentage, innerhoferPercentage), spazioPercentage))
+                    return "Wuerth";
+
+                if (svaiPercentage > threshold && svaiPercentage >= Math.Max(Math.Max(wuerthPercentage, innerhoferPercentage), spazioPercentage))
+                    return "Svai";
+
+                if (innerhoferPercentage > threshold && innerhoferPercentage >= Math.Max(Math.Max(wuerthPercentage, svaiPercentage), spazioPercentage))
+                    return "Innerhofer";
+
+                //if (spazioPercentage > threshold && spazioPercentage >= Math.Max(Math.Max(wuerthPercentage, svaiPercentage), innerhoferPercentage))
+                //    return "Spazio";
+
+                // Controllo aggiuntivo sul numero di colonne
+                if (headers.Length >= 35) // Wuerth ha molte colonne
+                    return "Wuerth";
+                if (headers.Length == 21) // SVAI ha 21 colonne
+                    return "Svai";
+                if (headers.Length < 10) // Innerhofer ha poche colonne
+                    return "Innerhofer";
+
+                throw new InvalidOperationException("Impossibile determinare il formato del tracciato");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Errore nel determinare il formato: {ex.Message}");
+                throw;
+            }
         }
+
+        //private string DeterminaFormatoTracciato(string text)
+        //{
+        //    if (text.Contains("INNERHOFER", StringComparison.OrdinalIgnoreCase))
+        //        return "Innerhofer";
+        //    if (text.Contains("WUERTH", StringComparison.OrdinalIgnoreCase))
+        //        return "Wuerth";
+        //    if (text.Contains("SVAI", StringComparison.OrdinalIgnoreCase))
+        //        return "Svai";
+        //    if (text.Contains("SPAZIO", StringComparison.OrdinalIgnoreCase))
+        //        return "Spazio";
+
+        //    throw new InvalidOperationException("Impossibile determinare il formato del tracciato");
+        //}
 
         private void ValidateDestinatario(DocumentoToImport doc)
         {
@@ -516,12 +629,11 @@ namespace DDTImport
                 {
                     string fileName = Path.GetFileName(filePath);
                     Console.WriteLine($"\nElaborazione del file: {fileName}");
-
                     Console.WriteLine("\nScegli il formato del file:");
                     Console.WriteLine("1. Innerhofer");
                     Console.WriteLine("2. Wuerth");
                     Console.WriteLine("3. Spazio");
-                    Console.WriteLine("4. Wuerth");
+                    Console.WriteLine("4. Svai");
                     Console.WriteLine("5. Rilevamento automatico");
 
                     string scelta = Console.ReadLine();
@@ -531,16 +643,18 @@ namespace DDTImport
                     switch (scelta)
                     {
                         case "1":
-                            documento = reader.ReadDDT(fileName, contenutoFile, "Innerhofer");
-                            break;
                         case "2":
-                            documento = reader.ReadDDT(fileName, contenutoFile, "Wuerth");
-                            break;
                         case "3":
-                            documento = reader.ReadDDT(fileName, contenutoFile, "Spazio");
-                            break;
                         case "4":
-                            documento = reader.ReadDDT(fileName, contenutoFile, "Svai");
+                            string formato = scelta switch
+                            {
+                                "1" => "Innerhofer",
+                                "2" => "Wuerth",
+                                "3" => "Spazio",
+                                "4" => "Svai",
+                                _ => throw new InvalidOperationException("Scelta non valida.")
+                            };
+                            documento = reader.ReadDDT(fileName, contenutoFile, formato);
                             break;
                         case "5":
                             documento = reader.ReadDDT(fileName, contenutoFile);
