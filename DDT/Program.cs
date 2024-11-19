@@ -39,7 +39,9 @@ namespace DDTImport
     {
         public int RigaNumero { get; set; }
         public string RigaTipo { get; set; }
-        public string Cliente { get; set; }  // Nel caso il cliente dia diverso dal destinatario (esempio SVAI)
+        public string Cliente { get; set; }
+        public string NumeroDoc { get; set; }
+        public DateTime DocData { get; set; }
         public string ArticoloCodiceGenerico { get; set; }
         public string ArticoloCodiceFornitore { get; set; }
         public string ArticoloCodiceProduttore { get; set; }
@@ -131,7 +133,6 @@ namespace DDTImport
             try
             {
                 // Dividiamo il testo in righe e prendiamo la prima riga (intestazione)
-                // Poi la dividiamo in colonne usando il punto e virgola come separatore
                 var headers = text.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
                                  .FirstOrDefault()?
                                  .Split(';');
@@ -140,8 +141,7 @@ namespace DDTImport
                 if (headers == null || headers.Length == 0)
                     throw new InvalidOperationException("File vuoto o non valido");
 
-                // Definiamo le intestazioni che ci aspettiamo per ogni fornitore
-                // Queste sono le colonne caratteristiche di ciascun formato
+                // Definiamo le intestazioni attese per ciascun fornitore
                 var wuerthHeaders = new[] {
                     "CODICE_CLIENTE", "NOME_CLIENTE", "VIA", "CODICE_POSTALE", "CITTA", "PROVINCIA",
                     "PAESE", "DATA_DDT", "NUMERO_DDT"
@@ -151,57 +151,32 @@ namespace DDTImport
                     "CAP", "Localita", "Provincia"
                 };
                 var innerhoferHeaders = new[] {
-                    "Codice articolo", "Codice interno", "Descrizione articolo",
-                    "Prezzo unico/netto", "Quantità", "Prezzo totale"
+                    "TipoRecord", "CodiceIdentificativo", "CodiceCliente", "NumeroDocumento", "Data", "NumeroRiga", "TipoRiga",
+                    "CodiceArticolo", "CodiceProdotto", "DescrizioneArticolo", "UnitaMisura", "Quantita", "NumeroOrdine", "DataOrdine"
                 };
                 var spazioHeaders = new[] {
                     "CODICE ARTICOLO", "DESCRIZIONE", "QTA", "IM. UNI. NETTO",
                     "Prezzo netto Tot.", "al. iva", "N ORDINE"
                 };
 
-                // Normalizziamo le intestazioni del file per il confronto:
-                // - Rimuoviamo gli spazi iniziali e finali
-                // - Convertiamo tutto in maiuscolo per un confronto case-insensitive
+                // Normalizziamo le intestazioni del file per il confronto
                 var normalizedHeaders = headers.Select(h => h.Trim().ToUpper()).ToList();
 
-                // Contiamo quante intestazioni del file corrispondono a quelle attese per ogni fornitore
-                // Più alto è il numero di corrispondenze, più è probabile che sia quel formato
-                int wuerthMatches = wuerthHeaders.Count(h =>
-                    normalizedHeaders.Contains(h.ToUpper()));
+                // Funzione per verificare se tutte le intestazioni attese sono presenti
+                bool MatchesHeaders(IEnumerable<string> expectedHeaders) =>
+                    expectedHeaders.All(h => normalizedHeaders.Contains(h.ToUpper()));
 
-                int svaiMatches = svaiHeaders.Count(h =>
-                    normalizedHeaders.Contains(h.ToUpper()));
-
-                int innerhoferMatches = innerhoferHeaders.Count(h =>
-                    normalizedHeaders.Contains(h.ToUpper()));
-
-                int spazioMatches = spazioHeaders.Count(h =>
-                    normalizedHeaders.Contains(h.ToUpper()));
-
-                // Calcoliamo la percentuale di corrispondenza per ogni fornitore
-                // Es: se su 10 colonne attese ne troviamo 7, la percentuale è 0.7 (70%)
-                double wuerthPercentage = (double)wuerthMatches / wuerthHeaders.Length;
-                double svaiPercentage = (double)svaiMatches / svaiHeaders.Length;
-                double innerhoferPercentage = (double)innerhoferMatches / innerhoferHeaders.Length;
-                double spazioPercentage = (double)spazioMatches / spazioHeaders.Length;
-
-                // Definiamo una soglia minima del 70% per considerare una corrispondenza valida
-                const double threshold = 0.7;
-
-                // Determiniamo il fornitore in base alla maggiore percentuale di corrispondenza
-                // Per essere valida, la percentuale deve:
-                // 1. Superare la soglia minima (threshold)
-                // 2. Essere la più alta tra tutte le percentuali
-                if (wuerthPercentage > threshold && wuerthPercentage >= Math.Max(Math.Max(svaiPercentage, innerhoferPercentage), spazioPercentage))
+                // Verifichiamo a quale fornitore corrisponde il formato
+                if (MatchesHeaders(wuerthHeaders))
                     return "Wuerth";
-                if (svaiPercentage > threshold && svaiPercentage >= Math.Max(Math.Max(wuerthPercentage, innerhoferPercentage), spazioPercentage))
+                if (MatchesHeaders(svaiHeaders))
                     return "Svai";
-                if (innerhoferPercentage > threshold && innerhoferPercentage >= Math.Max(Math.Max(wuerthPercentage, svaiPercentage), spazioPercentage))
+                if (MatchesHeaders(innerhoferHeaders))
                     return "Innerhofer";
-                if (spazioPercentage > threshold && spazioPercentage >= Math.Max(Math.Max(Math.Max(wuerthPercentage, svaiPercentage), innerhoferPercentage), 0))
-                    return "Spazio";                              
+                if (MatchesHeaders(spazioHeaders))
+                    return "Spazio";
 
-                // Se non riusciamo a determinare il formato in nessun modo, lanciamo un'eccezione
+                // Se nessun formato corrisponde completamente, lanciamo un'eccezione
                 throw new InvalidOperationException("Impossibile determinare il formato del tracciato");
             }
             catch (Exception ex)
@@ -211,23 +186,6 @@ namespace DDTImport
                 throw;
             }
         }
-
-
-        // Funzione che controllava il formato tramite il nome, magari aggiungere questa come controllo ulteriore potrebbe avere senso
-
-        //private string DeterminaFormatoTracciato(string text)
-        //{
-        //    if (text.Contains("INNERHOFER", StringComparison.OrdinalIgnoreCase))
-        //        return "Innerhofer";
-        //    if (text.Contains("WUERTH", StringComparison.OrdinalIgnoreCase))
-        //        return "Wuerth";
-        //    if (text.Contains("SVAI", StringComparison.OrdinalIgnoreCase))
-        //        return "Svai";
-        //    if (text.Contains("SPAZIO", StringComparison.OrdinalIgnoreCase))
-        //        return "Spazio";
-
-        //    throw new InvalidOperationException("Impossibile determinare il formato del tracciato");
-        //}
 
 
         // cerca di validare il destinatario ma non tutti lo hanno all'interno del DDT a quato pare
@@ -279,55 +237,52 @@ namespace DDTImport
 
         private DocumentoToImport ReadDDT_from_Innerhofer(string text)
         {
-            // Inizializza il documento con i dati fissi del fornitore
             var documento = new DocumentoToImport
             {
-                Fornitore_AgileID = "INNERHOFER",  //Momentanea
+                Fornitore_AgileID = "INNERHOFER",
                 FornitoreDescrizione = "Innerhofer",
-                DocTipo = "DDT"
+                DocTipo = "DDT",
+                RigheDelDoc = new List<RigaDet>()
             };
 
-            // Splitta il file in righe
             var lines = text.Split('\n');
-
-            // Processa ogni riga saltando l'intestazione
-            for (int i = 1; i < lines.Length; i++)
+            foreach (var line in lines)
             {
-                // Salta le righe vuote
-                if (string.IsNullOrWhiteSpace(lines[i])) continue;
+                if (string.IsNullOrWhiteSpace(line)) continue;
 
-                // Splitta la riga nei vari campi usando il separatore ;
-                var fields = lines[i].Split(';');
+                var tipoRecord = line.Substring(0, 3);
 
-                // Verifica che la riga abbia tutti i campi necessari
-                if (fields.Length < 9) continue;
-
-                // Aggiorna i dati di testata solo alla prima riga valida
-                if (documento.DocNumero == null)
+                switch (tipoRecord)
                 {
-                    documento.DocNumero = fields[7].Trim();  // Numero bolla
-                    documento.DocData = DateTime.Parse(fields[8].Trim());  // Data bolla
+                    case "TAD":
+                        documento.Cliente_CodiceAssegnatoDalFornitore = line.Substring(13, 4).Trim();
+                        documento.DocNumero = line.Substring(28, 9).Trim();
+                        documento.DocData = DateTime.ParseExact(line.Substring(37, 8), "yyyyMMdd", null);
+                        documento.FornitoreDescrizione = line.Substring(57, 50).Trim();
+                        documento.DestinazioneMerce1 = line.Substring(107, 30).Trim();
+                        break;
+
+                    case "RAD":
+                        if (line[54] != 'A') continue;
+
+                        var riga = new RigaDet
+                        {
+                            RigaTipo = line[54].ToString(),
+                            ArticoloCodiceFornitore = line.Substring(55, 10).Trim(),
+                            ArticoloCodiceProduttore = line.Substring(65, 30).Trim(),
+                            ArticoloDescrizione = line.Substring(95, 50).Trim(),
+                            UM = line.Substring(145, 5).Trim(),
+                            Qta = decimal.Parse(line.Substring(150, 15)) / 100,
+                            RifOrdineCliente = line.Substring(195, 10).Trim(),
+                        };
+                        documento.RigheDelDoc.Add(riga);
+                        break;
                 }
-
-                // Crea una nuova riga del DDT
-                var riga = new RigaDet
-                {
-                    RigaNumero = i,
-                    ArticoloCodiceFornitore = fields[0].Trim(),
-                    ArticoloCodiceGenerico = fields[1].Trim(),
-                    ArticoloDescrizione = fields[2].Trim(),
-                    PrezzoUnitario = ParseImporto(fields[4]),
-                    Qta = ParseImporto(fields[5]),
-                    PrezzoTotale = ParseImporto(fields[6])
-                };
-
-
-                // Aggiunge la riga al documento
-                documento.RigheDelDoc.Add(riga);
             }
 
             return documento;
         }
+
 
         private DocumentoToImport ReadDDT_from_Wuerth(string text)
         {
@@ -390,13 +345,7 @@ namespace DDTImport
                     documento.DestinazioneMerce2 = $"{fields[columnIndexes["CODICE_POSTALE"]].Trim()} " +
                                                  $"{fields[columnIndexes["CITTA"]].Trim()} " +
                                                  $"({fields[columnIndexes["PROVINCIA"]].Trim()})";
-
-                    // Parsing della data con gestione formato
-                    if (DateTime.TryParse(fields[columnIndexes["DATA_DDT"]].Trim(), out DateTime docData))
-                    {
-                        documento.DocData = docData;
-                    }
-
+                    
                     documento.DocNumero = fields[columnIndexes["NUMERO_DDT"]].Trim();
                 }
 
@@ -453,7 +402,7 @@ namespace DDTImport
             var documento = new DocumentoToImport
             {
                 Fornitore_AgileID = "SVAI",
-                FornitoreDescrizione = "SVAI Srl",
+                FornitoreDescrizione = "SVAI",
                 DocTipo = "DDT"
             };
 
@@ -465,46 +414,41 @@ namespace DDTImport
             var columnIndexes = new Dictionary<string, int>();
 
             for (int i = 0; i < headers.Length; i++)
-            {
                 columnIndexes[headers[i].Trim()] = i;
-            }
 
             var requiredColumns = new[]
             {
-        "Numero_Bolla", "Data_Bolla", "Rag_Soc_1", "Indirizzo", "CAP", "Localita", "Provincia",
-        "Codice_Articolo", "Descrizione_Articolo", "Quantita", "Prezzo", "Netto_Riga", "IVA"
-    };
+                "Numero_Bolla", "Data_Bolla", "Rag_Soc_1", "Codice_Articolo",
+                "Descrizione_Articolo", "Quantita", "Prezzo", "Netto_Riga", "IVA"
+            };
 
             foreach (var column in requiredColumns)
-            {
                 if (!columnIndexes.ContainsKey(column))
                     throw new InvalidOperationException($"Colonna richiesta mancante: {column}");
-            }
 
             for (int i = 1; i < lines.Length; i++)
             {
                 var fields = lines[i].Split(';');
                 if (fields.Length < headers.Length) continue;
 
-                if (documento.DocNumero == null)
-                {
-                    documento.DocNumero = fields[columnIndexes["Numero_Bolla"]].Trim();
-                    if (DateTime.TryParse(fields[columnIndexes["Data_Bolla"]].Trim(), out DateTime docData))
-                    {
-                        documento.DocData = docData;
-                    }
-                    documento.DestinazioneMerce1 = fields[columnIndexes["Indirizzo"]].Trim();
-                    documento.DestinazioneMerce2 = $"{fields[columnIndexes["CAP"]].Trim()} " +
-                                                 $"{fields[columnIndexes["Localita"]].Trim()} " +
-                                                 $"({fields[columnIndexes["Provincia"]].Trim()})";
-                }
-
                 try
                 {
+                    // Gestione del cliente combinando Rag_Soc_1 e Rag_Soc_2 se presente
+                    string cliente = fields[columnIndexes["Rag_Soc_1"]].Trim();
+                    if (columnIndexes.ContainsKey("Rag_Soc_2"))
+                    {
+                        string ragSoc2 = fields[columnIndexes["Rag_Soc_2"]].Trim();
+                        if (!string.IsNullOrWhiteSpace(ragSoc2))
+                        {
+                            cliente = $"{cliente} {ragSoc2}";
+                        }
+                    }
+
                     var riga = new RigaDet
                     {
                         RigaNumero = i,
-                        Cliente = fields[columnIndexes["Rag_Soc_1"]].Trim(),
+                        Cliente = cliente,
+                        NumeroDoc = fields[columnIndexes["Numero_Bolla"]].Trim(),                        
                         RigaTipo = columnIndexes.ContainsKey("Tipo_Riga") ?
                             fields[columnIndexes["Tipo_Riga"]].Trim() : "",
                         ArticoloCodiceFornitore = fields[columnIndexes["Codice_Articolo"]].Trim(),
@@ -779,5 +723,6 @@ namespace DDTImport
         }
     } //C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\Innerhofer DDT 23-24.csv  
 }//C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\Wuerth CSV - DDT_8826546665_20240503_154226.csv
-//C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\SVAI ddt.csv
-//C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\Spazio-esportazione (4).csv
+ //C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\SVAI ddt.csv
+ //C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\Spazio-esportazione (4).csv
+ //C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\innerhofer E082_2024-01-0-80377.txt
