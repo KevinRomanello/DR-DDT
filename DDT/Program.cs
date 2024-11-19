@@ -39,6 +39,7 @@ namespace DDTImport
     {
         public int RigaNumero { get; set; }
         public string RigaTipo { get; set; }
+        public string Cliente { get; set; }  // Nel caso il cliente dia diverso dal destinatario (esempio SVAI)
         public string ArticoloCodiceGenerico { get; set; }
         public string ArticoloCodiceFornitore { get; set; }
         public string ArticoloCodiceProduttore { get; set; }
@@ -457,7 +458,6 @@ namespace DDTImport
             };
 
             var lines = text.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
-
             if (lines.Length < 2)
                 throw new InvalidOperationException("Il file non contiene dati sufficienti");
 
@@ -471,9 +471,9 @@ namespace DDTImport
 
             var requiredColumns = new[]
             {
-                "Numero_Bolla", "Data_Bolla", "Rag_Soc_1", "Indirizzo", "CAP", "Localita", "Provincia",
-                "Codice_Articolo", "Descrizione_Articolo", "Quantita", "Prezzo", "Netto_Riga", "IVA"
-            };
+        "Numero_Bolla", "Data_Bolla", "Rag_Soc_1", "Indirizzo", "CAP", "Localita", "Provincia",
+        "Codice_Articolo", "Descrizione_Articolo", "Quantita", "Prezzo", "Netto_Riga", "IVA"
+    };
 
             foreach (var column in requiredColumns)
             {
@@ -489,19 +489,10 @@ namespace DDTImport
                 if (documento.DocNumero == null)
                 {
                     documento.DocNumero = fields[columnIndexes["Numero_Bolla"]].Trim();
-
                     if (DateTime.TryParse(fields[columnIndexes["Data_Bolla"]].Trim(), out DateTime docData))
                     {
                         documento.DocData = docData;
                     }
-
-                    var ragSoc1 = fields[columnIndexes["Rag_Soc_1"]].Trim();
-
-                    var ragSoc2 = columnIndexes.ContainsKey("Rag_Soc_2") ?
-                        fields[columnIndexes["Rag_Soc_2"]].Trim() : "";
-                    documento.Cliente_AgileDesc = string.IsNullOrEmpty(ragSoc2) ?
-                        ragSoc1 : $"{ragSoc1} {ragSoc2}";
-
                     documento.DestinazioneMerce1 = fields[columnIndexes["Indirizzo"]].Trim();
                     documento.DestinazioneMerce2 = $"{fields[columnIndexes["CAP"]].Trim()} " +
                                                  $"{fields[columnIndexes["Localita"]].Trim()} " +
@@ -513,34 +504,26 @@ namespace DDTImport
                     var riga = new RigaDet
                     {
                         RigaNumero = i,
+                        Cliente = fields[columnIndexes["Rag_Soc_1"]].Trim(),
                         RigaTipo = columnIndexes.ContainsKey("Tipo_Riga") ?
                             fields[columnIndexes["Tipo_Riga"]].Trim() : "",
-
                         ArticoloCodiceFornitore = fields[columnIndexes["Codice_Articolo"]].Trim(),
-
                         ArticoloMarca = columnIndexes.ContainsKey("Marca") ?
                             fields[columnIndexes["Marca"]].Trim() : "",
-
                         ArticoloDescrizione = fields[columnIndexes["Descrizione_Articolo"]].Trim(),
-
                         ArticoloCodiceGenerico = columnIndexes.ContainsKey("Codice Fornitore") ?
                             fields[columnIndexes["Codice Fornitore"]].Trim() : "",
-
-                        // Parsing di TUTTI i valori numerici con ParseImporto per gestire i . e ,
                         Qta = ParseImporto(fields[columnIndexes["Quantita"]]),
                         PrezzoUnitario = ParseImporto(fields[columnIndexes["Prezzo"]]),
                         PrezzoTotale = ParseImporto(fields[columnIndexes["Netto_Riga"]]),
                         PrezzoTotaleScontato = ParseImporto(fields[columnIndexes["Netto_Riga"]]),
                         IVAAliquota = ParseImporto(fields[columnIndexes["IVA"]]),
-
-                        // Parsing di tutti gli sconti con ParseImporto per gestire i . e ,
                         Sconto1 = columnIndexes.ContainsKey("Sconto_1") ?
                             ParseImporto(fields[columnIndexes["Sconto_1"]]) : 0,
                         Sconto2 = columnIndexes.ContainsKey("Sconto_2") ?
                             ParseImporto(fields[columnIndexes["Sconto_2"]]) : 0,
                         Sconto3 = columnIndexes.ContainsKey("Sconto_3") ?
                             ParseImporto(fields[columnIndexes["Sconto_3"]]) : 0,
-
                         RifOrdineFornitore = columnIndexes.ContainsKey("Ordine") ?
                             fields[columnIndexes["Ordine"]].Trim() : ""
                     };
@@ -748,26 +731,47 @@ namespace DDTImport
             string outputPath = "output.txt";
             using (StreamWriter writer = new StreamWriter(outputPath))
             {
-                // Scrivi intestazione documento
                 writer.WriteLine("=== DATI DOCUMENTO ===");
                 writer.WriteLine($"Fornitore: {doc.FornitoreDescrizione}");
                 writer.WriteLine($"Tipo Documento: {doc.DocTipo}");
                 writer.WriteLine($"Numero: {doc.DocNumero}");
                 writer.WriteLine($"Data: {doc.DocData:dd/MM/yyyy}");
-                writer.WriteLine($"Cliente: {doc.Cliente_AgileDesc}");
                 writer.WriteLine($"Destinazione: {doc.DestinazioneMerce1}");
                 writer.WriteLine($"             {doc.DestinazioneMerce2}");
+                writer.WriteLine($"Riferimento Ordine Fornitore: {doc.RifOrdineFornitore}");
+                writer.WriteLine($"Riferimento Ordine Cliente: {doc.RifOrdineCliente}");
+                writer.WriteLine($"Note: {doc.Note}");
+                writer.WriteLine($"Trasporto Data: {doc.TrasportoData}");
+                writer.WriteLine($"Trasporto Note: {doc.TrasportoNote}");
+                writer.WriteLine($"Documento Verificato: {doc.Verificato}");
 
-                // Scrivi prima riga del documento
-                if (doc.RigheDelDoc.Count > 0)
+                // Scrivi i dettagli delle prime 3 righe
+                for (int i = 0; i < Math.Min(3, doc.RigheDelDoc.Count); i++)
                 {
-                    var primaRiga = doc.RigheDelDoc[0];
-                    writer.WriteLine("\n=== PRIMA RIGA ===");
-                    writer.WriteLine($"Codice: {primaRiga.ArticoloCodiceFornitore}");
-                    writer.WriteLine($"Descrizione: {primaRiga.ArticoloDescrizione}");
-                    writer.WriteLine($"Quantità: {primaRiga.Qta}");
-                    writer.WriteLine($"Prezzo Unitario: {primaRiga.PrezzoUnitario:C2}");
-                    writer.WriteLine($"Prezzo Totale: {primaRiga.PrezzoTotale:C2}");
+                    var riga = doc.RigheDelDoc[i];
+                    writer.WriteLine($"\n=== RIGA {i + 1} ===");
+                    writer.WriteLine($"Numero Riga: {riga.RigaNumero}");
+                    writer.WriteLine($"Tipo Riga: {riga.RigaTipo}");
+                    writer.WriteLine($"Cliente: {riga.Cliente}");
+                    writer.WriteLine($"Articolo - Codice Generico: {riga.ArticoloCodiceGenerico}");
+                    writer.WriteLine($"Articolo - Codice Fornitore: {riga.ArticoloCodiceFornitore}");
+                    writer.WriteLine($"Articolo - Codice Produttore: {riga.ArticoloCodiceProduttore}");
+                    writer.WriteLine($"Articolo - Marca: {riga.ArticoloMarca}");
+                    writer.WriteLine($"Articolo - Descrizione: {riga.ArticoloDescrizione}");
+                    writer.WriteLine($"Articolo - Barcode: {riga.ArticoloBarcode}");
+                    writer.WriteLine($"Articolo - Agile ID: {riga.Articolo_AgileID}");
+                    writer.WriteLine($"Quantità: {riga.Qta}");
+                    writer.WriteLine($"Unità di Misura: {riga.UM}");
+                    writer.WriteLine($"Confezione: {riga.Confezione}");
+                    writer.WriteLine($"Prezzo Unitario: {riga.PrezzoUnitario:C2}");
+                    writer.WriteLine($"Sconti: {riga.Sconto1}% + {riga.Sconto2}% + {riga.Sconto3}%");
+                    writer.WriteLine($"Prezzo Totale: {riga.PrezzoTotale:C2}");
+                    writer.WriteLine($"Prezzo Totale Scontato: {riga.PrezzoTotaleScontato:C2}");
+                    writer.WriteLine($"IVA Codice: {riga.IVACodice}");
+                    writer.WriteLine($"IVA Aliquota: {riga.IVAAliquota}%");
+                    writer.WriteLine($"Rif. Ordine Fornitore: {riga.RifOrdineFornitore}");
+                    writer.WriteLine($"Rif. Ordine Cliente: {riga.RifOrdineCliente}");
+                    writer.WriteLine($"Destinazione Merce: {riga.DestinazioneMerce}");
                 }
 
                 writer.WriteLine($"\nTotale righe nel documento: {doc.RigheDelDoc.Count}");
