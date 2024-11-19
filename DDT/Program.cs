@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Globalization;
 using System.IO;
+using System.Text.RegularExpressions;
 using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace DDTImport
@@ -76,7 +77,7 @@ namespace DDTImport
             {
                 { "Innerhofer", ReadDDT_from_Innerhofer },
                 { "Wuerth", ReadDDT_from_Wuerth },
-                { "Spazio", ReadDDT_from_SPAZIO },
+                { "Spazio", ReadDDT_from_Spazio },
                 { "Svai", ReadDDT_from_SVAI }
             };
         }
@@ -165,7 +166,7 @@ namespace DDTImport
                 };
                 var spazioHeaders = new[] {
                     "CODICE ARTICOLO", "DESCRIZIONE", "QTA", "IM. UNI. NETTO",
-                    "Prezzo netto Tot.", "al. iva", "N ORDINE"
+                    "Prezzo netto Tot.", "al. iva", "N? ORDINE"
                 };
 
                 // Normalizziamo le intestazioni del file per il confronto
@@ -485,63 +486,127 @@ namespace DDTImport
 
             return documento;
         }
-        
-        private DocumentoToImport ReadDDT_from_SPAZIO(string text)
+        //C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\Spazio-esportazione (4).csv
+        private DocumentoToImport ReadDDT_from_Spazio(string text)
         {
-            Console.WriteLine("entrato per SPAZIO");
+            Console.WriteLine("Entrato per SPAZIO");
             var documento = new DocumentoToImport
             {
                 Fornitore_AgileID = "SPAZIO",
-                FornitoreDescrizione = "Spazio",
-                DocTipo = "DDT"
+                FornitoreDescrizione = "SPAZIO",
+                DocTipo = "DDT",
+                RigheDelDoc = new List<RigaDet>()
             };
 
             var lines = text.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
-
             if (lines.Length < 2)
-            {
                 throw new InvalidOperationException("Il file non contiene dati sufficienti");
+
+            // Estrazione nome file per numero DDT
+            // Assumendo che il nome del file contenga il numero DDT
+            if (text.Contains("esportazione"))
+            {
+                var match = Regex.Match(text, @"esportazione\s*\(?(\d+)\)?");
+                if (match.Success)
+                {
+                    documento.DocNumero = match.Groups[1].Value;
+                }
             }
 
-            var headers = lines[0].Split(';');
-            var columnIndexes = new Dictionary<string, int>();
+            // Imposta la data di oggi come data documento se non specificata altrimenti
+            documento.DocData = DateTime.Today;
 
-            for (int i = 0; i < headers.Length; i++)
+            var headerLine = lines[0]
+                .Replace("\"", "")
+                .Replace("\t", "")
+                .Replace("\u00A0", " ");
+
+            var headers = headerLine.Split(';')
+                .Select(h => new string(h.Where(c => !char.IsControl(c)).ToArray()))
+                .Select(h => h.Trim())
+                .ToList();
+
+            var columnIndexes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < headers.Count; i++)
             {
-                columnIndexes[headers[i].Trim()] = i;
+                var cleanHeader = headers[i].Trim();
+                columnIndexes[cleanHeader] = i;
             }
 
             var requiredColumns = new[]
             {
-                "CODICE ARTICOLO", "DESCRIZIONE", "QTA", "IM. UNI. NETTO",
-                "Prezzo netto Tot.", "al. iva", "N ORDINE"
+                "CODICE ARTICOLO",
+                "DESCRIZIONE",
+                "QTA",
+                "IM. UNI. NETTO",
+                "Prezzo netto Tot.",
+                "al. iva"
             };
 
-            foreach (var column in requiredColumns)
+            var missingColumns = requiredColumns
+                .Where(col => !columnIndexes.ContainsKey(col))
+                .ToList();
+
+            if (missingColumns.Any())
             {
-                if (!columnIndexes.ContainsKey(column))
-                {
-                    throw new InvalidOperationException($"Colonna richiesta mancante: {column}");
-                }
+                throw new InvalidOperationException($"Colonne richieste mancanti: {string.Join(", ", missingColumns)}");
             }
 
+            int rigaNum = 1;
+
+            // Processa le righe di dati
             for (int i = 1; i < lines.Length; i++)
             {
-                var fields = lines[i].Split(';');
-                if (fields.Length < headers.Length) continue;
-
                 try
                 {
+                    var line = lines[i]
+                        .Replace("\"", "")
+                        .Replace("\t", "")
+                        .Replace("\u00A0", " ");
+
+                    var fields = line.Split(';')
+                        .Select(f => f.Trim())
+                        .ToArray();
+
+                    if (fields.Length < headers.Count) continue;
+
+                    string codiceArticolo = fields[columnIndexes["CODICE ARTICOLO"]]
+                        .Replace(" ", "")  // Rimuove tutti gli spazi
+                        .Trim();
+
+                    string descrizione = fields[columnIndexes["DESCRIZIONE"]]
+                        .Replace("  ", " ")  // Rimuove spazi doppi
+                        .Trim();
+
+                    // Cerca l'indice del numero ordine se esiste
+                    string rifOrdine = "";
+                    if (columnIndexes.TryGetValue("N? ORDINE", out int orderIndex))
+                    {
+                        rifOrdine = fields[orderIndex].Trim();
+                    }
+
+                    decimal prezzoUnitario = ParseImporto(fields[columnIndexes["IM. UNI. NETTO"]].Replace("?", ""));
+                    decimal prezzoTotale = ParseImporto(fields[columnIndexes["Prezzo netto Tot."]].Replace("?", ""));
+
+                    // Calcola lo sconto se i prezzi sono diversi
+                    string sconti = "";
+                    if (prezzoUnitario > 0 && prezzoTotale > 0 && prezzoUnitario != prezzoTotale)
+                    {
+                        decimal scontoPercentuale = (1 - (prezzoTotale / prezzoUnitario)) * 100;
+                        sconti = $"{Math.Round(scontoPercentuale, 2)}%";
+                    }
+
                     var riga = new RigaDet
                     {
-                        RigaNumero = i,
-                        ArticoloCodiceFornitore = fields[columnIndexes["CODICE ARTICOLO"]].Trim(),
-                        ArticoloDescrizione = fields[columnIndexes["DESCRIZIONE"]].Trim(),
+                        RigaNumero = rigaNum++,
+                        ArticoloCodiceFornitore = codiceArticolo,
+                        ArticoloDescrizione = descrizione,
                         Qta = ParseImporto(fields[columnIndexes["QTA"]]),
-                        PrezzoUnitario = ParseImporto(fields[columnIndexes["IM. UNI. NETTO"]]),
-                        PrezzoTotale = ParseImporto(fields[columnIndexes["Prezzo netto Tot."]]),
-                        IVAAliquota = ParseImporto(fields[columnIndexes["al. iva"]]),
-                        RifOrdineFornitore = fields[columnIndexes["N ORDINE"]].Trim()
+                        PrezzoUnitario = prezzoUnitario,
+                        PrezzoTotale = prezzoTotale,
+                        PrezzoTotaleScontato = prezzoTotale,
+                        IVAAliquota = ParseImporto(fields[columnIndexes["al. iva"]].Replace("%", "")),
+                        RifOrdineFornitore = rifOrdine,
                     };
 
                     documento.RigheDelDoc.Add(riga);
@@ -560,6 +625,7 @@ namespace DDTImport
 
             return documento;
         }
+
 
         // Sistema i numeri con . e ,
         private decimal ParseImporto(string value)
@@ -651,10 +717,12 @@ namespace DDTImport
                     Console.WriteLine("4. Svai");
                     Console.WriteLine("5. Rilevamento automatico");
 
-                    string scelta = Console.ReadLine();
+                    
                     string contenutoFile = File.ReadAllText(filePath);
+                    Console.WriteLine("contenuto:  " + contenutoFile);
                     DocumentoToImport documento;
 
+                    string scelta = Console.ReadLine();
                     switch (scelta)
                     {
                         case "1":
