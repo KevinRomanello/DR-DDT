@@ -210,6 +210,9 @@ namespace DDTImport
             }
         }
 
+
+        // Funzione che controllava il formato tramite il nome, magari aggiungere questa come controllo ulteriore potrebbe avere senso
+        
         //private string DeterminaFormatoTracciato(string text)
         //{
         //    if (text.Contains("INNERHOFER", StringComparison.OrdinalIgnoreCase))
@@ -224,6 +227,9 @@ namespace DDTImport
         //    throw new InvalidOperationException("Impossibile determinare il formato del tracciato");
         //}
 
+
+        // cerca di validare il destinatario ma non tutti lo hanno all'interno del DDT a quato pare
+        // quindi si limita a notificare se è verificato o meno
         private void ValidateDestinatario(DocumentoToImport doc)
         {
             // Verifica se il documento è destinato a ERREBI
@@ -249,16 +255,7 @@ namespace DDTImport
             {
                 isValidDestinatario = validNames.Any(name =>
                     doc.DestinazioneMerce1.ToUpper().Contains(name));
-            }
-
-            // Caso speciale: destinazione diversa da ERREBI
-            if (!isValidDestinatario && doc.Note != null &&
-                doc.Note.ToUpper().Contains("CONSEGNA DIRETTA"))
-            {
-                // In questo caso, verifichiamo che almeno il cliente originale sia ERREBI
-                isValidDestinatario = validNames.Any(name =>
-                    doc.Cliente_AgileDesc?.ToUpper().Contains(name) ?? false);
-            }
+            }           
 
             if (!isValidDestinatario)
             {
@@ -279,7 +276,7 @@ namespace DDTImport
             // Inizializza il documento con i dati fissi del fornitore
             var documento = new DocumentoToImport
             {
-                Fornitore_AgileID = "INNERHOFER",
+                Fornitore_AgileID = "INNERHOFER",  //Momentanea
                 FornitoreDescrizione = "Innerhofer",
                 DocTipo = "DDT"
             };
@@ -494,6 +491,7 @@ namespace DDTImport
                     }
 
                     var ragSoc1 = fields[columnIndexes["Rag_Soc_1"]].Trim();
+
                     var ragSoc2 = columnIndexes.ContainsKey("Rag_Soc_2") ?
                         fields[columnIndexes["Rag_Soc_2"]].Trim() : "";
                     documento.Cliente_AgileDesc = string.IsNullOrEmpty(ragSoc2) ?
@@ -512,21 +510,25 @@ namespace DDTImport
                         RigaNumero = i,
                         RigaTipo = columnIndexes.ContainsKey("Tipo_Riga") ?
                             fields[columnIndexes["Tipo_Riga"]].Trim() : "",
+
                         ArticoloCodiceFornitore = fields[columnIndexes["Codice_Articolo"]].Trim(),
+
                         ArticoloMarca = columnIndexes.ContainsKey("Marca") ?
                             fields[columnIndexes["Marca"]].Trim() : "",
+
                         ArticoloDescrizione = fields[columnIndexes["Descrizione_Articolo"]].Trim(),
+
                         ArticoloCodiceGenerico = columnIndexes.ContainsKey("Codice Fornitore") ?
                             fields[columnIndexes["Codice Fornitore"]].Trim() : "",
 
-                        // Parsing di TUTTI i valori numerici con ParseImporto
+                        // Parsing di TUTTI i valori numerici con ParseImporto per gestire i . e ,
                         Qta = ParseImporto(fields[columnIndexes["Quantita"]]),
                         PrezzoUnitario = ParseImporto(fields[columnIndexes["Prezzo"]]),
                         PrezzoTotale = ParseImporto(fields[columnIndexes["Netto_Riga"]]),
                         PrezzoTotaleScontato = ParseImporto(fields[columnIndexes["Netto_Riga"]]),
                         IVAAliquota = ParseImporto(fields[columnIndexes["IVA"]]),
 
-                        // Parsing di tutti gli sconti con ParseImporto
+                        // Parsing di tutti gli sconti con ParseImporto per gestire i . e ,
                         Sconto1 = columnIndexes.ContainsKey("Sconto_1") ?
                             ParseImporto(fields[columnIndexes["Sconto_1"]]) : 0,
                         Sconto2 = columnIndexes.ContainsKey("Sconto_2") ?
@@ -562,7 +564,7 @@ namespace DDTImport
             // Rimuovi spazi e caratteri non necessari
             value = value.Trim();
 
-            // Gestione caso con due punti (es: 1.175.00)
+            // Gestione caso con due punti 
             if (value.Count(c => c == '.') > 1)
             {
                 // Trova l'ultimo punto e sostituiscilo con virgola, rimuovi gli altri punti
