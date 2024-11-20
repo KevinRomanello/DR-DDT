@@ -368,7 +368,6 @@ namespace DDTImport
                 if (string.IsNullOrEmpty(line)) continue;
 
                 var values = line.Split(';');
-                if (values.Length < 30) continue; // Verifica che ci siano abbastanza colonne
 
                 // Per la prima riga, imposta i dati del documento
                 if (documento.DocNumero == null)
