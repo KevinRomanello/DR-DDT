@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Globalization;
 using System.IO;
 using System.Text.RegularExpressions;
@@ -156,7 +156,7 @@ namespace DDTImport
                     : headerLine.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries)
                         .Select(h => h.Trim())
                         .ToList();
-                                
+
 
                 // Se non ci sono intestazioni dopo la divisione, il file non è valido
                 if (headers == null || headers.Count == 0)
@@ -165,24 +165,24 @@ namespace DDTImport
                 // Definiamo le intestazioni attese per ciascun fornitore
                 var wuerthHeaders = new[] {
                     "CODICE_CLIENTE", "NOME_CLIENTE", "VIA", "CODICE_POSTALE", "CITTA", "PROVINCIA",
-                    "PAESE", "DATA_DDT", "NUMERO_DDT"
+                    "PAESE", "DATA_DDT", "NUMERO_DDT",
+                    "NUMERO_POS_DDT", "CODICE_PRODOTTO", "DESCRIZIONE_PRODOTTO", "CONFEZIONE",
+                    "DATA_ORDINE_CLIENTE", "NUMERO_ORDINE_CLIENTE", "NUMERO_POS_ORDINE_CLIENTE",
+                    "CODICE_ARTICOLO_CLIENTE", "UNITA_DI_MISURA", "QUANTITA", "PREZZO_NETTO",
+                    "UNITA_PREZZO", "PREZZO_POSIZIONE", "TOTALE_IVA", "ALIQUOTA_IVA", "DATA_ORDINE",
+                    "NUMERO_ORDINE", "NUMERO_POSIZIONE_ORDINE", "CODICE_EAN", "CODICE_DEALER_COMMITTENTE",
+                    "CODICE_DEALER_DESTINATARIO_MERCI", "DISPONENT", "CODICE_MERCEOLOGICO",
+                    "STATO_ORIGINE_MERCE", "LETTERA_DI_VETTURA", "CENTRO_DI_COSTO", "NOTA", "LOTTO",
+                    "AVVISO_DI_CONSEGNA", "NUMERO_SERIALE"
                 };
                 var svaiHeaders = new[] {
                     "Numero_Bolla", "Data_Bolla", "Rag_Soc_1", "Rag_Soc_2", "Indirizzo",
-                    "CAP", "Localita", "Provincia"
-                };
-                var innerhoferHeaders = new[] {
-                    "TipoRecord", "CodiceIdentificativo", "CodiceCliente", "NumeroDocumento", "Data", "NumeroRiga", "TipoRiga",
-                    "CodiceArticolo", "CodiceProdotto", "DescrizioneArticolo", "UnitaMisura", "Quantita", "NumeroOrdine", "DataOrdine"
+                    "CAP", "Localita", "Provincia","Tipo_Riga","Codice_Articolo","Marca","Descrizione_Articolo","Codice Fornitore",
+                    "Quantita","Prezzo","Sconto_1","Sconto_2","Sconto_3", "Netto_Riga","IVA","Ordine"
                 };
                 var spazioHeaders = new[] {
-                        "CODICE ARTICOLO",
-                        "DESCRIZIONE",
-                        "QTA",
-                        "IM. UNI. NETTO",
-                        "Prezzo netto Tot.",
-                        "al. iva",
-                        "N� ORDINE" 
+                        "CODICE ARTICOLO","DESCRIZIONE", "QTA","IM. UNI. NETTO",
+                        "Prezzo netto Tot.","al. iva", "N� ORDINE"
                     };
 
                 // Funzione per verificare se tutte le intestazioni attese sono presenti
@@ -215,8 +215,6 @@ namespace DDTImport
                     return "Wuerth";
                 if (MatchesHeaders(svaiHeaders, "Svai"))
                     return "Svai";
-                if (MatchesHeaders(innerhoferHeaders, "Innerhofer"))
-                    return "Innerhofer";
                 if (MatchesHeaders(spazioHeaders, "Spazio"))
                     return "Spazio";
 
@@ -357,9 +355,14 @@ namespace DDTImport
             var lines = text.Split('\n');
             if (lines.Length < 2) return documento; // Verifica che ci sia almeno l'header e una riga
 
-            // Ignora la prima riga (header)
+            // Legge l'header e mappa gli indici delle colonne
             var headerLine = lines[0];
             var headers = headerLine.Split(';');
+            var columnIndexes = new Dictionary<string, int>();
+            for (int i = 0; i < headers.Length; i++)
+            {
+                columnIndexes[headers[i].Trim()] = i;
+            }
 
             // Processa le righe di dati
             for (int i = 1; i < lines.Length; i++)
@@ -372,44 +375,44 @@ namespace DDTImport
                 // Per la prima riga, imposta i dati del documento
                 if (documento.DocNumero == null)
                 {
-                    documento.DocNumero = values[8].Trim(); // NUMERO_DDT
-                    if (DateTime.TryParseExact(values[7].Trim(), "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime docData))
+                    documento.DocNumero = values[columnIndexes["NUMERO_DDT"]].Trim(); // NUMERO_DDT
+                    if (DateTime.TryParseExact(values[columnIndexes["DATA_DDT"]].Trim(), "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime docData))
                     {
                         documento.DocData = docData;
                     }
 
                     // Formatta l'indirizzo correttamente
-                    var via = values[2].Trim();
-                    var cap = values[3].Trim();
-                    var citta = values[4].Trim();
-                    var provincia = values[5].Trim();
-                    var paese = values[6].Trim();
+                    var via = values[columnIndexes["VIA"]].Trim();
+                    var cap = values[columnIndexes["CODICE_POSTALE"]].Trim();
+                    var citta = values[columnIndexes["CITTA"]].Trim();
+                    var provincia = values[columnIndexes["PROVINCIA"]].Trim();
+                    var paese = values[columnIndexes["PAESE"]].Trim();
                     documento.DestinazioneMerce2 = $"{via}\n{cap} {citta} ({provincia})";
 
                     // Riferimento ordine cliente (se presente)
-                    documento.RifOrdineCliente = values[14].Trim(); // NUMERO_ORDINE_CLIENTE
+                    documento.RifOrdineCliente = values[columnIndexes["NUMERO_ORDINE_CLIENTE"]].Trim();
                 }
 
                 // Crea una nuova riga
                 var riga = new RigaDet
                 {
-                    RigaNumero = int.Parse(values[9].Trim().TrimStart('0')), // NUMERO_POS_DDT senza gli zero iniziali
-                    ArticoloCodiceFornitore = values[10].Trim(),            // CODICE_PRODOTTO
-                    ArticoloDescrizione = values[11].Trim(),                // DESCRIZIONE_PRODOTTO
-                    Confezione = values[12].Trim(),                         // CONFEZIONE
-                    UM = values[17].Trim(),                                 // UNITA_DI_MISURA
-                    Qta = decimal.Parse(values[18].Trim(), CultureInfo.InvariantCulture), // QUANTITA
-                    ArticoloBarcode = values[27].Trim(),                    // CODICE_EAN
+                    RigaNumero = int.Parse(values[columnIndexes["NUMERO_POS_DDT"]].Trim().TrimStart('0')), // NUMERO_POS_DDT senza gli zero iniziali
+                    ArticoloCodiceFornitore = values[columnIndexes["CODICE_PRODOTTO"]].Trim(),           // CODICE_PRODOTTO
+                    ArticoloDescrizione = values[columnIndexes["DESCRIZIONE_PRODOTTO"]].Trim(),         // DESCRIZIONE_PRODOTTO
+                    Confezione = values[columnIndexes["CONFEZIONE"]].Trim(),                            // CONFEZIONE
+                    UM = values[columnIndexes["UNITA_DI_MISURA"]].Trim(),                               // UNITA_DI_MISURA
+                    Qta = decimal.Parse(values[columnIndexes["QUANTITA"]].Trim(), CultureInfo.InvariantCulture), // QUANTITA
+                    ArticoloBarcode = values[columnIndexes["CODICE_EAN"]].Trim(),                      // CODICE_EAN
 
                     // Prezzi
-                    PrezzoUnitario = ParseNullableDecimal(values[19].Trim()), // PREZZO_NETTO
-                    PrezzoTotale = ParseNullableDecimal(values[21].Trim()),   // PREZZO_POSIZIONE
-
+                    PrezzoUnitario = ParseNullableDecimal(values[columnIndexes["PREZZO_NETTO"]].Trim()), // PREZZO_NETTO
+                    PrezzoTotale = ParseNullableDecimal(values[columnIndexes["PREZZO_POSIZIONE"]].Trim()), // PREZZO_POSIZIONE
+                    
                     // IVA
-                    IVAAliquota = ParseNullableDecimal(values[23].Trim()),    // ALIQUOTA_IVA
+                    IVAAliquota = ParseNullableDecimal(values[columnIndexes["ALIQUOTA_IVA"]].Trim()),  // ALIQUOTA_IVA
 
                     // Riferimenti ordine
-                    RifOrdineFornitore = values[24].Trim()                    // NUMERO_ORDINE
+                    RifOrdineFornitore = values[columnIndexes["NUMERO_ORDINE"]].Trim()                // NUMERO_ORDINE
                 };
 
                 // Se c'è un prezzo unitario, calcola il prezzo totale scontato
@@ -477,7 +480,7 @@ namespace DDTImport
                         {
                             documento.DocData = docData;
                         }
-                                                                        
+
                         firstRow = false;
                     }
 
@@ -532,7 +535,7 @@ namespace DDTImport
             if (lines.Length < 2)
                 throw new InvalidOperationException("Il file non contiene dati sufficienti");
 
-            
+
             // Imposta la data di oggi come data documento se non specificata altrimenti
             documento.DocData = DateTime.Today;
 
@@ -598,7 +601,7 @@ namespace DDTImport
                     string descrizione = fields[columnIndexes["DESCRIZIONE"]]
                         .Replace("  ", " ")  // Rimuove spazi doppi
                         .Trim();
-                                        
+
                     decimal prezzoUnitario = ParseImporto(fields[columnIndexes["IM. UNI. NETTO"]].Replace("?", ""));
                     decimal prezzoTotale = ParseImporto(fields[columnIndexes["Prezzo netto Tot."]].Replace("?", ""));
 
@@ -730,7 +733,7 @@ namespace DDTImport
                     Console.WriteLine("4. Svai");
                     Console.WriteLine("5. Rilevamento automatico");
 
-                    
+
                     string contenutoFile = File.ReadAllText(filePath);
                     DocumentoToImport documento;
 
@@ -779,6 +782,7 @@ namespace DDTImport
                 writer.WriteLine($"Tipo Documento: {doc.DocTipo}");
                 writer.WriteLine($"Numero: {doc.DocNumero}");
                 writer.WriteLine($"Data: {doc.DocData:dd/MM/yyyy}");
+                writer.WriteLine($"Codice_Cliente: {doc.FornitoreCodice}");
                 writer.WriteLine($"Destinazione: {doc.DestinazioneMerce1}");
                 writer.WriteLine($"             {doc.DestinazioneMerce2}");
                 writer.WriteLine($"Riferimento Ordine Fornitore: {doc.RifOrdineFornitore}");
@@ -820,7 +824,7 @@ namespace DDTImport
             }
         }
     }
-}//C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\Wuerth CSV - DDT_8826546665_20240503_154226.csv
- //C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\SVAI ddt.csv
- //C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\Spazio-esportazione (4).csv
- //C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\innerhofer E082_2024-01-0-80377.txt
+}///Users/kevinromanello/Documents/lavoro/MAIN/Import DDT/Wuerth CSV - DDT_8826546665_20240503_154226.csv
+ ///Users/kevinromanello/Documents/lavoro/MAIN/Import DDT/SVAI ddt.csv
+///Users/kevinromanello/Documents/lavoro/MAIN/Import DDT/Spazio-esportazione (6) (1).csv
+//C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\innerhofer E082_2024-01-0-80377.txt
