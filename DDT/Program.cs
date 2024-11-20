@@ -228,6 +228,26 @@ namespace DDTImport
             }
         }
 
+        private void VerificaDestinatario(DocumentoToImport documento, string destinatario)
+{
+    // Verifica se il destinatario è ERREBI
+    if (destinatario.Contains("ERREBI", StringComparison.OrdinalIgnoreCase))
+    {
+        // Se è ERREBI, lo trattiamo come fornitore
+        documento.Fornitore_AgileID = "ERREBI";
+        documento.FornitoreDescrizione = "ERREBI";
+        documento.Verificato = true;
+
+        // Modifica altri campi relativi al fornitore, se necessario
+        documento.FornitoreCodice = "CODICE_ERREBI";  // Esempio di codice fornitore
+        documento.FornitorePIVA = "PIVA_ERREBI";  // Esempio di PIVA
+    }
+    else
+    {
+        // Se non è ERREBI, non modificare il fornitore
+        documento.Verificato = false;
+    }
+}
 
 
         //C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\Spazio-esportazione (4).csv
