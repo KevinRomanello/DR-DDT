@@ -2,7 +2,6 @@ using System;
 using System.Globalization;
 using System.IO;
 using System.Text.RegularExpressions;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace DDTImport
 {
@@ -10,13 +9,13 @@ namespace DDTImport
     {
         public string Fornitore_AgileID { get; set; }
         public string Fornitore_AgileDesc { get; set; }
-        public string FornitoreCodice { get; set; }
+        public string FornitoreCodice { get; set; }   // nome fornitore
         public string FornitoreDescrizione { get; set; }
         public string FornitorePIVA { get; set; }
         public string FornitoreCodiceFiscale { get; set; }
 
         public string Cliente_CodiceAssegnatoDalFornitore { get; set; }
-        public string Cliente { get; set; }   // CAMPO DOVE MEMORIZZO 
+        public string Cliente { get; set; }   // CAMPO DOVE MEMORIZZO IL CLIENTE(WUERTH)
         public string Cliente_AgileID { get; set; }
         public string Cliente_AgileDesc { get; set; }
         public string Cliente_PIVA { get; set; }
@@ -44,7 +43,7 @@ namespace DDTImport
         public string RigaTipo { get; set; }
         public string NumeroDoc { get; set; }
         public string CodiceCliente { get; set; }
-        public DateTime DocData { get; set; }
+        public DateTime DataOrdine { get; set; }
         public string ArticoloCodiceGenerico { get; set; }
         public string ArticoloCodiceFornitore { get; set; }
         public string ArticoloCodiceProduttore { get; set; }
@@ -52,7 +51,7 @@ namespace DDTImport
         public string ArticoloDescrizione { get; set; }
         public string ArticoloBarcode { get; set; }
         public string Articolo_AgileID { get; set; }
-        public decimal Qta { get; set; }
+        public decimal? Qta { get; set; }
         public string UM { get; set; }
         public string Confezione { get; set; }
         public decimal? PrezzoUnitario { get; set; }
@@ -105,6 +104,8 @@ namespace DDTImport
                 // Usa il formato per selezionare il parser appropriato
                 var documento = _formatReaders[formatoDelTracciato](text);
                 Console.WriteLine($"Parsing completato. Righe elaborate: {documento.RigheDelDoc.Count}");
+                
+                VerificaDestinatario(documento);
 
                 // Verifica che ci siano righe
                 if (documento.RigheDelDoc.Count == 0)
@@ -183,7 +184,7 @@ namespace DDTImport
                 };
                 var spazioHeaders = new[] {
                         "CODICE ARTICOLO","DESCRIZIONE", "QTA","IM. UNI. NETTO",
-                        "Prezzo netto Tot.","al. iva", "N� ORDINE"
+                        "Prezzo netto Tot.","al. iva", "N� ORDINE" // orrendo il carattere ma per il momento lo gestico così
                     };
 
                 // Funzione per verificare se tutte le intestazioni attese sono presenti
@@ -229,125 +230,63 @@ namespace DDTImport
             }
         }
 
-        private void VerificaDestinatario(DocumentoToImport documento, string destinatario)
-{
-    // Verifica se il destinatario è ERREBI
-    if (destinatario.Contains("ERREBI", StringComparison.OrdinalIgnoreCase))
-    {
-        // Se è ERREBI, lo trattiamo come fornitore
-        documento.Fornitore_AgileID = "ERREBI";
-        documento.FornitoreDescrizione = "ERREBI";
-        documento.Verificato = true;
-
-        // Modifica altri campi relativi al fornitore, se necessario
-        documento.FornitoreCodice = "CODICE_ERREBI";  // Esempio di codice fornitore
-        documento.FornitorePIVA = "PIVA_ERREBI";  // Esempio di PIVA
-    }
-    else
-    {
-        // Se non è ERREBI, non modificare il fornitore
-        documento.Verificato = false;
-    }
-}
+        private void VerificaDestinatario(DocumentoToImport documento)
+        {
+            // Verifica se il destinatario è ERREBI
+            if (documento.FornitoreDescrizione.Contains("ERREBI", StringComparison.OrdinalIgnoreCase))
+            {
+                documento.Verificato = true;                
+            }
+            else
+            {
+                documento.Verificato = false;
+            }
+        }
 
 
-        //C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\Spazio-esportazione (4).csv
+        //C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\innerhofer E082_2024-01-0-80377.txt
         private DocumentoToImport ReadDDT_from_Innerhofer(string text)
         {
             var documento = new DocumentoToImport
             {
                 Fornitore_AgileID = "INNERHOFER",
-                FornitoreDescrizione = "Innerhofer",
                 DocTipo = "DDT",
                 RigheDelDoc = new List<RigaDet>()
             };
 
-            var lines = text.Split('\n');
-            foreach (var line in lines)
+            foreach (var line in text.Split('\n', StringSplitOptions.RemoveEmptyEntries))
             {
-                if (string.IsNullOrWhiteSpace(line)) continue;
-                if (line.Length < 4) continue;
+                Console.WriteLine($"Processing line: {line}");
 
-                var tipoRecord = line.Substring(0, 4).Trim();
-
-                switch (tipoRecord)
+                if (line.StartsWith("TADS"))
                 {
-                    case "TADS":
-                        try
-                        {
-                            string numeroCompleto = line.Substring(31, 9).Trim();
-                            documento.DocNumero = numeroCompleto.TrimStart('0');
-
-                            string dataStr = line.Substring(40, 8).Trim();
-                            if (!string.IsNullOrWhiteSpace(dataStr))
-                            {
-                                documento.DocData = DateTime.ParseExact(dataStr, "yyyyMMdd", CultureInfo.InvariantCulture);
-                            }
-
-                            documento.FornitoreDescrizione = line.Substring(50, 40).Trim();
-
-                            var indirizzo = line.Substring(98, 77).Trim();
-                            documento.DestinazioneMerce2 = string.Join(" ", indirizzo.Split(new[] { ' ' },
-                                StringSplitOptions.RemoveEmptyEntries));
-                        }
-                        catch (Exception ex)
-                        {
-                            Console.WriteLine($"Errore nell'elaborazione della Testata: {ex.Message}");
-                            throw;
-                        }
-                        break;
-
-                    case "RADS":
-                        try
-                        {
-                            string codiceFornitore = line.Substring(65, 9).Trim();  // Per ottenere 002084130
-                            Console.WriteLine($"Codice Fornitore estratto: {codiceFornitore}");
-
-                            string codiceProduttore = line.Substring(90, 17).Trim(); // Per ottenere 40152116160072205
-                            Console.WriteLine($"Codice Produttore estratto: {codiceProduttore}");
-
-                            string descrizione = line.Substring(110, 50).Trim(); // Per ottenere Sanpress Tubo AISI 444 18x1mm
-                            Console.WriteLine($"Descrizione estratta: {descrizione}");
-
-                            string qtaStr = line.Substring(180, 25).Trim(); // Per ottenere la quantità
-                            Console.WriteLine($"Quantità string: {qtaStr}");
-
-                            var riga = new RigaDet
-                            {
-                                RigaTipo = "RADS",
-                                ArticoloCodiceFornitore = codiceFornitore,
-                                ArticoloCodiceProduttore = codiceProduttore,
-                                ArticoloDescrizione = descrizione,
-                                UM = "MTR",
-                                Qta = Convert.ToDecimal(qtaStr),
-                                RifOrdineCliente = line.Substring(194, 12).Trim()
-                            };
-
-                            if (!string.IsNullOrWhiteSpace(riga.ArticoloCodiceFornitore) &&
-                                !string.IsNullOrWhiteSpace(riga.ArticoloDescrizione))
-                            {
-                                documento.RigheDelDoc.Add(riga);
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            Console.WriteLine($"Errore nell'elaborazione della Riga: {ex.Message}");
-                            throw;
-                        }
-                        break;
-
-                    case "CADS":
-                        break;
-
-                    default:
-                        Console.WriteLine($"Tipo record non riconosciuto: {tipoRecord}");
-                        break;
+                    documento.DocNumero = line.Substring(25, 9).Trim().TrimStart('0');
+                    documento.DocData = DateTime.ParseExact(line.Substring(40, 8).Trim(), "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None);
+                    documento.FornitoreDescrizione = line.Substring(60, 50).Trim();
+                    documento.DestinazioneMerce2 = line.Substring(99, 120).Trim();
+                    Console.WriteLine($"Parsed TADS: DocNumero={documento.DocNumero}, Data={documento.DocData}");
+                }
+                else if (line.StartsWith("RADS"))
+                {
+                    int orderPos = line.IndexOf("ORD");
+                    var riga = new RigaDet
+                    {
+                        RigaTipo = "RADS",
+                        ArticoloCodiceFornitore = line.Substring(54, 12).Trim(),
+                        ArticoloCodiceProduttore = line.Substring(69,17).Trim(),
+                        ArticoloDescrizione = line.Substring(97, 40).Trim(),
+                        UM = line.Substring(140, 12).Trim(),
+                        RifOrdineCliente = line.Substring(orderPos, 10).Trim(),   // offest per trovare la data da ORD
+                        DataOrdine = DateTime.ParseExact(line.Substring(orderPos + 15, 8).Trim(), "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None)
+                    };
+                    documento.RigheDelDoc.Add(riga);
+                    Console.WriteLine($"Added RADS: CodFornitore={riga.ArticoloCodiceFornitore}, Desc={riga.ArticoloDescrizione}, Qta={riga.Qta}");
                 }
             }
 
             return documento;
         }
-        
+
 
         private DocumentoToImport ReadDDT_from_Wuerth(string text)
         {
@@ -412,16 +351,14 @@ namespace DDTImport
                     UM = values[columnIndexes["UNITA_DI_MISURA"]].Trim(),                               // UNITA_DI_MISURA
                     Qta = decimal.Parse(values[columnIndexes["QUANTITA"]].Trim(), CultureInfo.InvariantCulture), // QUANTITA
                     ArticoloBarcode = values[columnIndexes["CODICE_EAN"]].Trim(),                      // CODICE_EAN
-                    ArticoloCodiceGenerico = values[columnIndexes["CODICE_MERCEOLOGICO"]].Trim()            // CODICE_MERCEOLOGICO -> ArticoloCodiceGenerico
+                    ArticoloCodiceGenerico = values[columnIndexes["CODICE_MERCEOLOGICO"]].Trim(),            // CODICE_MERCEOLOGICO -> ArticoloCodiceGenerico
+                    //DataOrdine = 
 
-                    // Prezzi
                     PrezzoUnitario = ParseNullableDecimal(values[columnIndexes["PREZZO_NETTO"]].Trim()), // PREZZO_NETTO
                     PrezzoTotale = ParseNullableDecimal(values[columnIndexes["PREZZO_POSIZIONE"]].Trim()), // PREZZO_POSIZIONE
                     
-                    // IVA
                     IVAAliquota = ParseNullableDecimal(values[columnIndexes["ALIQUOTA_IVA"]].Trim()),  // ALIQUOTA_IVA
 
-                    // Riferimenti ordine
                     RifOrdineFornitore = values[columnIndexes["NUMERO_ORDINE"]].Trim()                // NUMERO_ORDINE
                 };
 
@@ -482,11 +419,7 @@ namespace DDTImport
                         documento.DocNumero = fields[columnIndexes["Numero_Bolla"]].Trim();
 
                         // Parsing della data
-                        if (DateTime.TryParseExact(fields[columnIndexes["Data_Bolla"]].Trim(),
-                            "dd/MM/yyyy",
-                            CultureInfo.InvariantCulture,
-                            DateTimeStyles.None,
-                            out DateTime docData))
+                        if (DateTime.TryParseExact(fields[columnIndexes["Data_Bolla"]].Trim(), "dd/MM/yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime docData))
                         {
                             documento.DocData = docData;
                         }
@@ -623,7 +556,6 @@ namespace DDTImport
                         Qta = ParseImporto(fields[columnIndexes["QTA"]]),
                         PrezzoUnitario = prezzoUnitario,
                         PrezzoTotale = prezzoTotale,
-                        PrezzoTotaleScontato = prezzoTotale,
                         IVAAliquota = ParseImporto(fields[columnIndexes["al. iva"]])
                     };
 
@@ -805,6 +737,7 @@ namespace DDTImport
                     writer.WriteLine($"Articolo - Codice Generico: {riga.ArticoloCodiceGenerico}");
                     writer.WriteLine($"Articolo - Codice Fornitore: {riga.ArticoloCodiceFornitore}");
                     writer.WriteLine($"Articolo - Codice Produttore: {riga.ArticoloCodiceProduttore}");
+                    writer.WriteLine($"Data ordine: {riga.DataOrdine}");
                     writer.WriteLine($"Articolo - Marca: {riga.ArticoloMarca}");
                     writer.WriteLine($"Articolo - Descrizione: {riga.ArticoloDescrizione}");
                     writer.WriteLine($"Articolo - Barcode: {riga.ArticoloBarcode}");
