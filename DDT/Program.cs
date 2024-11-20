@@ -403,6 +403,7 @@ namespace DDTImport
                     UM = values[columnIndexes["UNITA_DI_MISURA"]].Trim(),                               // UNITA_DI_MISURA
                     Qta = decimal.Parse(values[columnIndexes["QUANTITA"]].Trim(), CultureInfo.InvariantCulture), // QUANTITA
                     ArticoloBarcode = values[columnIndexes["CODICE_EAN"]].Trim(),                      // CODICE_EAN
+                    ArticoloCodiceGenerico = values[columnIndexes["CODICE_MERCEOLOGICO"]].Trim()            // CODICE_MERCEOLOGICO -> ArticoloCodiceGenerico
 
                     // Prezzi
                     PrezzoUnitario = ParseNullableDecimal(values[columnIndexes["PREZZO_NETTO"]].Trim()), // PREZZO_NETTO
