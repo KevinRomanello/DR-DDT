@@ -43,7 +43,7 @@ namespace DDTImport
         public string RigaTipo { get; set; }
         public string NumeroDoc { get; set; }
         public string CodiceCliente { get; set; }
-        public DateTime DataOrdine { get; set; }
+        public DateTime? DataOrdine { get; set; }
         public string ArticoloCodiceGenerico { get; set; }
         public string ArticoloCodiceFornitore { get; set; }
         public string ArticoloCodiceProduttore { get; set; }
@@ -233,7 +233,7 @@ namespace DDTImport
         private void VerificaDestinatario(DocumentoToImport documento)
         {
             // Verifica se il destinatario è ERREBI
-            if (documento.FornitoreDescrizione.Contains("ERREBI", StringComparison.OrdinalIgnoreCase))
+            if (documento.FornitoreDescrizione.Contains("ERRE-BI", StringComparison.OrdinalIgnoreCase))
             {
                 documento.Verificato = true;                
             }
@@ -349,10 +349,10 @@ namespace DDTImport
                     ArticoloDescrizione = values[columnIndexes["DESCRIZIONE_PRODOTTO"]].Trim(),         // DESCRIZIONE_PRODOTTO
                     Confezione = values[columnIndexes["CONFEZIONE"]].Trim(),                            // CONFEZIONE
                     UM = values[columnIndexes["UNITA_DI_MISURA"]].Trim(),                               // UNITA_DI_MISURA
-                    Qta = decimal.Parse(values[columnIndexes["QUANTITA"]].Trim(), CultureInfo.InvariantCulture), // QUANTITA
+                    Qta = ParseNullableDecimal(values[columnIndexes["QUANTITA"]].Trim()), // QUANTITA
                     ArticoloBarcode = values[columnIndexes["CODICE_EAN"]].Trim(),                      // CODICE_EAN
                     ArticoloCodiceGenerico = values[columnIndexes["CODICE_MERCEOLOGICO"]].Trim(),            // CODICE_MERCEOLOGICO -> ArticoloCodiceGenerico
-                    //DataOrdine = 
+                    DataOrdine = DateTime.ParseExact(values[columnIndexes["DATA_ORDINE_CLIENTE"]].Trim(), "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None), // data ordine
 
                     PrezzoUnitario = ParseNullableDecimal(values[columnIndexes["PREZZO_NETTO"]].Trim()), // PREZZO_NETTO
                     PrezzoTotale = ParseNullableDecimal(values[columnIndexes["PREZZO_POSIZIONE"]].Trim()), // PREZZO_POSIZIONE
@@ -374,10 +374,17 @@ namespace DDTImport
             return documento;
         }
 
+        // parsing pe rl agestione di , e .
+        // C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\SVAI ddt.csv
         private decimal? ParseNullableDecimal(string value)
         {
             if (string.IsNullOrWhiteSpace(value)) return null;
-            return decimal.TryParse(value.Replace(',', '.'), NumberStyles.Any, CultureInfo.InvariantCulture, out decimal result) ? result : null;
+
+            // Prima rimuovo tutti i punti, poi sostituisco la virgola con il punto
+            value = value.Replace(".", "");
+            value = value.Replace(",", ".");
+
+            return decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal result) ? result : null;
         }
 
 
@@ -435,14 +442,14 @@ namespace DDTImport
                         ArticoloCodiceGenerico = fields[columnIndexes["Codice Fornitore"]].Trim(),
                         ArticoloMarca = fields[columnIndexes["Marca"]].Trim(),
                         ArticoloDescrizione = fields[columnIndexes["Descrizione_Articolo"]].Trim(),
-                        Qta = ParseImporto(fields[columnIndexes["Quantita"]]),
-                        PrezzoUnitario = ParseImporto(fields[columnIndexes["Prezzo"]]),
-                        PrezzoTotale = ParseImporto(fields[columnIndexes["Netto_Riga"]]),
-                        PrezzoTotaleScontato = ParseImporto(fields[columnIndexes["Netto_Riga"]]),
-                        IVAAliquota = ParseImporto(fields[columnIndexes["IVA"]]),
-                        Sconto1 = ParseImporto(fields[columnIndexes["Sconto_1"]]),
-                        Sconto2 = ParseImporto(fields[columnIndexes["Sconto_2"]]),
-                        Sconto3 = ParseImporto(fields[columnIndexes["Sconto_3"]]),
+                        Qta = ParseNullableDecimal(fields[columnIndexes["Quantita"]]),
+                        PrezzoUnitario = ParseNullableDecimal(fields[columnIndexes["Prezzo"]]),
+                        PrezzoTotale = ParseNullableDecimal(fields[columnIndexes["Netto_Riga"]]),
+                        PrezzoTotaleScontato = ParseNullableDecimal(fields[columnIndexes["Netto_Riga"]]),
+                        IVAAliquota = ParseNullableDecimal(fields[columnIndexes["IVA"]]),
+                        Sconto1 = ParseNullableDecimal(fields[columnIndexes["Sconto_1"]]),
+                        Sconto2 = ParseNullableDecimal(fields[columnIndexes["Sconto_2"]]),
+                        Sconto3 = ParseNullableDecimal(fields[columnIndexes["Sconto_3"]]),
                         RifOrdineFornitore = fields[columnIndexes["Ordine"]].Trim(),
                     };
 
@@ -545,18 +552,18 @@ namespace DDTImport
                         .Replace("  ", " ")  // Rimuove spazi doppi
                         .Trim();
 
-                    decimal prezzoUnitario = ParseImporto(fields[columnIndexes["IM. UNI. NETTO"]]);
-                    decimal prezzoTotale = ParseImporto(fields[columnIndexes["Prezzo netto Tot."]]);
+                    decimal? prezzoUnitario = ParseNullableDecimal(fields[columnIndexes["IM. UNI. NETTO"]]);
+                    decimal? prezzoTotale = ParseNullableDecimal(fields[columnIndexes["Prezzo netto Tot."]]);
                              
                     var riga = new RigaDet
                     {
                         RigaNumero = rigaNum++,
                         ArticoloCodiceFornitore = codiceArticolo,
                         ArticoloDescrizione = descrizione,
-                        Qta = ParseImporto(fields[columnIndexes["QTA"]]),
+                        Qta = ParseNullableDecimal(fields[columnIndexes["QTA"]]),
                         PrezzoUnitario = prezzoUnitario,
                         PrezzoTotale = prezzoTotale,
-                        IVAAliquota = ParseImporto(fields[columnIndexes["al. iva"]])
+                        IVAAliquota = ParseNullableDecimal(fields[columnIndexes["al. iva"]])
                     };
 
                     documento.RigheDelDoc.Add(riga);
@@ -574,64 +581,7 @@ namespace DDTImport
             }
 
             return documento;
-        }
-
-
-        // Sistema i numeri con . e ,
-        private decimal ParseImporto(string value)
-        {
-            if (string.IsNullOrWhiteSpace(value))
-                return 0;
-
-            // Rimuovi spazi e caratteri non necessari
-            value = value.Trim();
-
-            try
-            {
-                // Rimuovi eventuali simboli di valuta (€, $, ecc.)
-                value = new string(value.Where(c => char.IsDigit(c) || c == '.' || c == ',' || c == '-').ToArray());
-
-                // Se il numero contiene sia punto che virgola
-                if (value.Contains(".") && value.Contains(","))
-                {
-                    // Se la virgola viene dopo il punto, è il separatore decimale italiano
-                    // es: 1.175,00 -> la virgola è il vero separatore decimale
-                    if (value.IndexOf('.') < value.IndexOf(','))
-                    {
-                        // Rimuovi i punti e mantieni la virgola
-                        value = value.Replace(".", "");
-                    }
-                    // Se il punto viene dopo la virgola, è il separatore decimale inglese
-                    // es: 1,175.00 -> il punto è il vero separatore decimale
-                    else
-                    {
-                        // Rimuovi le virgole e converti il punto in virgola
-                        value = value.Replace(",", "").Replace(".", ",");
-                    }
-                }
-                // Se c'è solo il punto
-                else if (value.Contains("."))
-                {
-                    value = value.Replace(".", ",");
-                }
-
-                // Prova a parsare con la cultura corrente (virgola come separatore decimale)
-                if (decimal.TryParse(value, NumberStyles.Any, CultureInfo.CurrentCulture, out decimal result))
-                    return Math.Round(result, 2);
-
-                // Se fallisce, prova con la cultura invariante
-                if (decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out result))
-                    return Math.Round(result, 2);
-
-                Console.WriteLine($"Impossibile parsare il valore '{value}' come importo. Uso 0 come default.");
-                return 0;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Errore durante il parsing dell'importo '{value}': {ex.Message}");
-                return 0;
-            }
-        }
+        }        
     }
 
 
