@@ -16,6 +16,7 @@ namespace DDTImport
         public string FornitoreCodiceFiscale { get; set; }
 
         public string Cliente_CodiceAssegnatoDalFornitore { get; set; }
+        public string Cliente { get; set; }   // CAMPO DOVE MEMORIZZO 
         public string Cliente_AgileID { get; set; }
         public string Cliente_AgileDesc { get; set; }
         public string Cliente_PIVA { get; set; }
@@ -263,7 +264,7 @@ namespace DDTImport
                                 documento.DocData = DateTime.ParseExact(dataStr, "yyyyMMdd", CultureInfo.InvariantCulture);
                             }
 
-                            documento.Cliente_AgileDesc = line.Substring(50, 40).Trim();
+                            documento.FornitoreDescrizione = line.Substring(50, 40).Trim();
 
                             var indirizzo = line.Substring(98, 77).Trim();
                             documento.DestinazioneMerce2 = string.Join(" ", indirizzo.Split(new[] { ' ' },
@@ -298,7 +299,7 @@ namespace DDTImport
                                 ArticoloCodiceProduttore = codiceProduttore,
                                 ArticoloDescrizione = descrizione,
                                 UM = "MTR",
-                                Qta = ParseQuantity(qtaStr),
+                                Qta = Convert.ToDecimal(qtaStr),
                                 RifOrdineCliente = line.Substring(194, 12).Trim()
                             };
 
@@ -326,20 +327,7 @@ namespace DDTImport
 
             return documento;
         }
-
-        private decimal ParseQuantity(string qtaStr)
-        {
-            if (string.IsNullOrWhiteSpace(qtaStr)) return 0;
-
-            qtaStr = new string(qtaStr.Where(char.IsDigit).ToArray());
-
-            if (decimal.TryParse(qtaStr, out decimal result))
-            {
-                return result / 10000m;
-            }
-
-            return 0;
-        }
+        
 
         private DocumentoToImport ReadDDT_from_Wuerth(string text)
         {
@@ -380,7 +368,8 @@ namespace DDTImport
                     {
                         documento.DocData = docData;
                     }
-
+                    documento.Cliente_CodiceAssegnatoDalFornitore = values[columnIndexes["CODICE_CLIENTE"]].Trim();
+                    documento.Cliente = values[columnIndexes["NOME_CLIENTE"]].Trim();
                     // Formatta l'indirizzo correttamente
                     var via = values[columnIndexes["VIA"]].Trim();
                     var cap = values[columnIndexes["CODICE_POSTALE"]].Trim();
@@ -602,17 +591,9 @@ namespace DDTImport
                         .Replace("  ", " ")  // Rimuove spazi doppi
                         .Trim();
 
-                    decimal prezzoUnitario = ParseImporto(fields[columnIndexes["IM. UNI. NETTO"]].Replace("?", ""));
-                    decimal prezzoTotale = ParseImporto(fields[columnIndexes["Prezzo netto Tot."]].Replace("?", ""));
-
-                    // Calcola lo sconto se i prezzi sono diversi
-                    string sconti = "";
-                    if (prezzoUnitario > 0 && prezzoTotale > 0 && prezzoUnitario != prezzoTotale)
-                    {
-                        decimal scontoPercentuale = (1 - (prezzoTotale / prezzoUnitario)) * 100;
-                        sconti = $"{Math.Round(scontoPercentuale, 2)}%";
-                    }
-
+                    decimal prezzoUnitario = ParseImporto(fields[columnIndexes["IM. UNI. NETTO"]]);
+                    decimal prezzoTotale = ParseImporto(fields[columnIndexes["Prezzo netto Tot."]]);
+                             
                     var riga = new RigaDet
                     {
                         RigaNumero = rigaNum++,
@@ -622,7 +603,7 @@ namespace DDTImport
                         PrezzoUnitario = prezzoUnitario,
                         PrezzoTotale = prezzoTotale,
                         PrezzoTotaleScontato = prezzoTotale,
-                        IVAAliquota = ParseImporto(fields[columnIndexes["al. iva"]].Replace("%", ""))
+                        IVAAliquota = ParseImporto(fields[columnIndexes["al. iva"]])
                     };
 
                     documento.RigheDelDoc.Add(riga);
@@ -783,6 +764,7 @@ namespace DDTImport
                 writer.WriteLine($"Numero: {doc.DocNumero}");
                 writer.WriteLine($"Data: {doc.DocData:dd/MM/yyyy}");
                 writer.WriteLine($"Codice_Cliente: {doc.FornitoreCodice}");
+                writer.WriteLine($"NOME_Cliente: {doc.Cliente}");
                 writer.WriteLine($"Destinazione: {doc.DestinazioneMerce1}");
                 writer.WriteLine($"             {doc.DestinazioneMerce2}");
                 writer.WriteLine($"Riferimento Ordine Fornitore: {doc.RifOrdineFornitore}");
@@ -824,7 +806,7 @@ namespace DDTImport
             }
         }
     }
-}///Users/kevinromanello/Documents/lavoro/MAIN/Import DDT/Wuerth CSV - DDT_8826546665_20240503_154226.csv
- ///Users/kevinromanello/Documents/lavoro/MAIN/Import DDT/SVAI ddt.csv
-///Users/kevinromanello/Documents/lavoro/MAIN/Import DDT/Spazio-esportazione (6) (1).csv
-//C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\innerhofer E082_2024-01-0-80377.txt
+}//C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\Wuerth CSV - DDT_8826546665_20240503_154226.csv
+ //C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\SVAI ddt.csv
+ //C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\Spazio-esportazione (4).csv
+ //C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\innerhofer E082_2024-01-0-80377.txt
