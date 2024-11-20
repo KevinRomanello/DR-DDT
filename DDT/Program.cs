@@ -124,13 +124,12 @@ namespace DDTImport
             }
         }
 
-
-
         // Funazione che determina il formato del DDT tramite l'inetstazione
         private string DeterminaFormatoTracciato(string text)
         {
             try
             {
+
                 // Dividiamo il testo in righe e prendiamo la prima riga (intestazione)
                 var lines = text.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
                 var firstLine = lines.FirstOrDefault();
@@ -142,13 +141,25 @@ namespace DDTImport
                 // Controlliamo se la riga usa il separatore ';'
                 bool usesSemicolon = firstLine.Contains(';');
 
-                // Dividiamo le intestazioni in base al separatore appropriato
+                // Normalizziamo la prima riga come fatto nella funzione ReadDDT_from_Spazio
+                var headerLine = firstLine
+                    .Replace("\"", "")
+                    .Replace("\t", "")
+                    .Replace("\u00A0", " ");
+
+                // Dividiamo le intestazioni e le normalizziamo
                 var headers = usesSemicolon
-                    ? firstLine.Split(';')
-                    : firstLine.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                    ? headerLine.Split(';')
+                        .Select(h => new string(h.Where(c => !char.IsControl(c)).ToArray()))
+                        .Select(h => h.Trim())
+                        .ToList()
+                    : headerLine.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries)
+                        .Select(h => h.Trim())
+                        .ToList();
+                                
 
                 // Se non ci sono intestazioni dopo la divisione, il file non è valido
-                if (headers == null || headers.Length == 0)
+                if (headers == null || headers.Count == 0)
                     throw new InvalidOperationException("File vuoto o non valido");
 
                 // Definiamo le intestazioni attese per ciascun fornitore
@@ -165,42 +176,61 @@ namespace DDTImport
                     "CodiceArticolo", "CodiceProdotto", "DescrizioneArticolo", "UnitaMisura", "Quantita", "NumeroOrdine", "DataOrdine"
                 };
                 var spazioHeaders = new[] {
-                    "CODICE ARTICOLO", "DESCRIZIONE", "QTA", "IM. UNI. NETTO",
-                    "PREZZO NETTO TOT.", "AL. IVA", "N? ORDINE"
-                };
-
-                // Normalizziamo le intestazioni del file per il confronto
-                var normalizedHeaders = headers.Select(h => h.Trim().ToUpper().Replace("\"", "")).ToList();
+                        "CODICE ARTICOLO",
+                        "DESCRIZIONE",
+                        "QTA",
+                        "IM. UNI. NETTO",
+                        "Prezzo netto Tot.",
+                        "al. iva",
+                        "N� ORDINE" 
+                    };
 
                 // Funzione per verificare se tutte le intestazioni attese sono presenti
-                bool MatchesHeaders(IEnumerable<string> expectedHeaders) =>
-                    expectedHeaders.All(h => normalizedHeaders.Contains(h.ToUpper()));                
+                bool MatchesHeaders(IEnumerable<string> expectedHeaders, string formatName)
+                {
+                    int matches = 0;
+                    int total = 0;
+
+                    foreach (var expected in expectedHeaders)
+                    {
+                        total++;
+                        bool found = headers.Any(h => h.Equals(expected, StringComparison.OrdinalIgnoreCase));
+                        if (found) matches++;
+                    }
+
+                    bool isMatch = matches == total;
+                    return isMatch;
+                }
+
 
                 // Se il file non usa il separatore ';' e non contiene header standard, consideriamo Innerhofer
                 if (!usesSemicolon)
+                {
+                    Console.WriteLine("\nFile senza separatore ';' -> Formato Innerhofer");
                     return "Innerhofer";
-                
+                }
 
                 // Verifichiamo a quale fornitore corrisponde il formato
-                if (MatchesHeaders(wuerthHeaders))
+                if (MatchesHeaders(wuerthHeaders, "Wuerth"))
                     return "Wuerth";
-                if (MatchesHeaders(svaiHeaders))
+                if (MatchesHeaders(svaiHeaders, "Svai"))
                     return "Svai";
-                if (MatchesHeaders(innerhoferHeaders))
+                if (MatchesHeaders(innerhoferHeaders, "Innerhofer"))
                     return "Innerhofer";
-                if (MatchesHeaders(spazioHeaders))
+                if (MatchesHeaders(spazioHeaders, "Spazio"))
                     return "Spazio";
 
-                // Se nessun formato corrisponde completamente, lanciamo un'eccezione
+                Console.WriteLine("\nNessun formato riconosciuto!");
                 throw new InvalidOperationException("Impossibile determinare il formato del tracciato");
             }
             catch (Exception ex)
             {
-                // Logghiamo l'errore e lo rilanciamo
-                Console.WriteLine($"Errore nel determinare il formato: {ex.Message}");
+                Console.WriteLine($"\nErrore nel determinare il formato: {ex.Message}");
                 throw;
             }
         }
+
+
 
         //C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\Spazio-esportazione (4).csv
         private DocumentoToImport ReadDDT_from_Innerhofer(string text)
@@ -503,17 +533,7 @@ namespace DDTImport
             if (lines.Length < 2)
                 throw new InvalidOperationException("Il file non contiene dati sufficienti");
 
-            // Estrazione nome file per numero DDT
-            // Assumendo che il nome del file contenga il numero DDT
-            if (text.Contains("esportazione"))
-            {
-                var match = Regex.Match(text, @"esportazione\s*\(?(\d+)\)?");
-                if (match.Success)
-                {
-                    documento.DocNumero = match.Groups[1].Value;
-                }
-            }
-
+            
             // Imposta la data di oggi come data documento se non specificata altrimenti
             documento.DocData = DateTime.Today;
 
@@ -541,7 +561,8 @@ namespace DDTImport
                 "QTA",
                 "IM. UNI. NETTO",
                 "Prezzo netto Tot.",
-                "al. iva"
+                "al. iva",
+                "N� ORDINE"
             };
 
             var missingColumns = requiredColumns
@@ -712,7 +733,6 @@ namespace DDTImport
 
                     
                     string contenutoFile = File.ReadAllText(filePath);
-                    Console.WriteLine("contenuto:  " + contenutoFile);
                     DocumentoToImport documento;
 
                     string scelta = Console.ReadLine();
