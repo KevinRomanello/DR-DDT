@@ -85,25 +85,16 @@ namespace DDTImport
 
         public DocumentoToImport ReadDDT(string fileName, string text, string formatoDelTracciato = null)
         {
-            Console.WriteLine($"\nInizio elaborazione {fileName}...");
-
             try
             {
                 // Se non è specificato il formato, lo rileva automaticamente
                 if (string.IsNullOrEmpty(formatoDelTracciato))
                 {
-                    Console.WriteLine("Rilevamento automatico formato...");
                     formatoDelTracciato = DeterminaFormatoTracciato(text);
-                    Console.WriteLine($"Formato rilevato: {formatoDelTracciato}");
-                }
-                else
-                {
-                    Console.WriteLine($"Utilizzo formato specificato: {formatoDelTracciato}");
-                }
+                } 
 
                 // Usa il formato per selezionare il parser appropriato
                 var documento = _formatReaders[formatoDelTracciato](text);
-                Console.WriteLine($"Parsing completato. Righe elaborate: {documento.RigheDelDoc.Count}");
 
                 VerificaDestinatario(documento);
 
@@ -121,8 +112,7 @@ namespace DDTImport
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Errore nell'elaborazione del DDT: {ex.Message}");
-                throw;
+                throw new Exception($"Errore nell'elaborazione del DDT: {ex.Message}");
             }
         }
 
@@ -204,7 +194,6 @@ namespace DDTImport
                         return format.Key;
                 }
 
-                Console.WriteLine("\nNessun formato riconosciuto!");
                 throw new InvalidOperationException("Impossibile determinare il formato del tracciato");
             }
             catch (Exception ex)
@@ -383,7 +372,6 @@ namespace DDTImport
 
         private DocumentoToImport ReadDDT_from_SVAI(string text)
         {
-            Console.WriteLine("Entrato per SVAI");
 
             var documento = new DocumentoToImport
             {
@@ -477,7 +465,6 @@ namespace DDTImport
 
         private DocumentoToImport ReadDDT_from_Spazio(string text)
         {
-            Console.WriteLine("Entrato per SPAZIO");
 
             // Inizializza il documento
             var documento = new DocumentoToImport
