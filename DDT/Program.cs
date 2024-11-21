@@ -15,7 +15,7 @@ namespace DDTImport
         public string FornitoreCodiceFiscale { get; set; }
 
         public string Cliente_CodiceAssegnatoDalFornitore { get; set; }
-        public string Cliente { get; set; }   // CAMPO DOVE MEMORIZZO IL CLIENTE(WUERTH)
+        public string Cliente { get; set; }   // CAMPO DOVE MEMORIZZO IL CLIENTE
         public string Cliente_AgileID { get; set; }
         public string Cliente_AgileDesc { get; set; }
         public string Cliente_PIVA { get; set; }
@@ -76,7 +76,7 @@ namespace DDTImport
             _formatReaders = new Dictionary<string, Func<string, DocumentoToImport>>
             {
                 { "Innerhofer", ReadDDT_from_Innerhofer },
-                { "Wuerth", ReadDDT_from_Wuerth },
+                { "Wurth", ReadDDT_from_Wurth },
                 { "Spazio", ReadDDT_from_Spazio },
                 { "Svai", ReadDDT_from_SVAI }
             };
@@ -146,7 +146,7 @@ namespace DDTImport
                 // Definiamo le intestazioni attese per ciascun fornitore
                 var formatHeaders = new Dictionary<string, IEnumerable<string>>()
                 {
-                    { "Wuerth", new[]
+                    { "Wurth", new[]
                         {
                             "CODICE_CLIENTE", "NOME_CLIENTE", "VIA", "CODICE_POSTALE", "CITTA", "PROVINCIA",
                             "PAESE", "DATA_DDT", "NUMERO_DDT",
@@ -179,7 +179,6 @@ namespace DDTImport
                 // Se il file non usa il separatore ';', consideriamo Innerhofer
                 if (!usesSemicolon)
                 {
-                    Console.WriteLine("\nFile senza separatore ';' -> Formato Innerhofer");
                     return "Innerhofer";
                 }
 
@@ -214,13 +213,9 @@ namespace DDTImport
         private void VerificaDestinatario(DocumentoToImport documento)
         {
             // Verifica se il destinatario è ERREBI
-            if (documento.FornitoreDescrizione != null && documento.FornitoreDescrizione.Contains("ERRE-BI", StringComparison.OrdinalIgnoreCase))
+            if (documento.Cliente != null && documento.Cliente.Contains("ERRE-BI", StringComparison.OrdinalIgnoreCase))
             {
                 documento.Verificato = "Verificato";
-            }
-            else if(documento.Cliente != null &&  documento.Cliente.Contains("ERRE-BI", StringComparison.OrdinalIgnoreCase))
-            {
-                documento.Verificato = "Verificato Parzialmente";
             }
             else
             {
@@ -234,6 +229,7 @@ namespace DDTImport
             var documento = new DocumentoToImport
             {
                 Fornitore_AgileID = "INNERHOFER",
+                FornitoreDescrizione = "INNERHOFER",
                 DocTipo = "DDT",
                 RigheDelDoc = new List<RigaDet>()
             };
@@ -249,10 +245,8 @@ namespace DDTImport
                     {
                         documento.DocNumero = line.Substring(25, 9).Trim().TrimStart('0');
                         documento.DocData = DateTime.ParseExact(line.Substring(40, 8).Trim(), "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None);
-                        documento.FornitoreDescrizione = line.Substring(60, 50).Trim();
+                        documento.Cliente = line.Substring(60, 50).Trim();
                         documento.DestinazioneMerce1 = line.Substring(99, 120).Trim();
-                        Console.WriteLine("DestinazioneMerce1: " + documento.DestinazioneMerce1);
-                        Console.WriteLine("FornitoreDescrizione: " + documento.FornitoreDescrizione);
                     }
                     else if (line.StartsWith("RADS"))
                     {
@@ -280,12 +274,12 @@ namespace DDTImport
         }
 
 
-        private DocumentoToImport ReadDDT_from_Wuerth(string text)
+        private DocumentoToImport ReadDDT_from_Wurth(string text)
         {
             var documento = new DocumentoToImport
             {
-                Fornitore_AgileID = "WUERTH",
-                FornitoreDescrizione = "Wuerth",
+                Fornitore_AgileID = "WURTH",
+                FornitoreDescrizione = "Wurth",
                 DocTipo = "DDT",
                 RigheDelDoc = new List<RigaDet>()
             };
@@ -448,8 +442,8 @@ namespace DDTImport
                     {
                         RigaNumero = rigaNum++,
                         RigaTipo = fields[columnIndexes["Tipo_Riga"]].Trim(),
-                        ArticoloCodiceFornitore = fields[columnIndexes["Codice_Articolo"]].Trim(),
-                        ArticoloCodiceGenerico = fields[columnIndexes["Codice Fornitore"]].Trim(),
+                        ArticoloCodiceFornitore = fields[columnIndexes["Codice Fornitore"]].Trim(),
+                        ArticoloCodiceGenerico = fields[columnIndexes["Codice_Articolo"]].Trim(),
                         ArticoloMarca = fields[columnIndexes["Marca"]].Trim(),
                         ArticoloDescrizione = fields[columnIndexes["Descrizione_Articolo"]].Trim(),
                         Qta = ParseNullableDecimal(fields[columnIndexes["Quantita"]]),
@@ -585,138 +579,7 @@ namespace DDTImport
         }
 
     }
-    public class Program
-    {
-        public static void Main()
-        {
-            Console.WriteLine("=== IMPORT DDT ===");
-            var reader = new DR_Contab_ImportDDT();
-
-            while (true)
-            {
-                Console.WriteLine("\nInserisci il percorso del file DDT (o 'exit' per uscire):");
-                string filePath = Console.ReadLine();
-
-                if (filePath?.ToLower() == "exit")
-                    break;
-
-                if (!File.Exists(filePath))
-                {
-                    Console.WriteLine("File non trovato. Riprova.");
-                    continue;
-                }
-
-                try
-                {
-                    string fileName = Path.GetFileName(filePath);
-                    Console.WriteLine($"\nElaborazione del file: {fileName}");
-                    Console.WriteLine("\nScegli il formato del file:");
-                    Console.WriteLine("1. Innerhofer");
-                    Console.WriteLine("2. Wuerth");
-                    Console.WriteLine("3. Spazio");
-                    Console.WriteLine("4. Svai");
-                    Console.WriteLine("5. Rilevamento automatico");
-
-
-                    string contenutoFile = File.ReadAllText(filePath);
-                    DocumentoToImport documento;
-
-                    string scelta = Console.ReadLine();
-                    switch (scelta)
-                    {
-                        case "1":
-                        case "2":
-                        case "3":
-                        case "4":
-                            string formato = scelta switch
-                            {
-                                "1" => "Innerhofer",
-                                "2" => "Wuerth",
-                                "3" => "Spazio",
-                                "4" => "Svai",
-                                _ => throw new InvalidOperationException("Scelta non valida.")
-                            };
-                            documento = reader.ReadDDT(fileName, contenutoFile, formato);
-                            break;
-                        case "5":
-                            documento = reader.ReadDDT(fileName, contenutoFile);
-                            break;
-                        default:
-                            Console.WriteLine("Scelta non valida.");
-                            continue;
-                    }
-
-                    WriteDDTToFile(documento);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Errore: {ex.Message}");
-                }
-            }
-        }
-
-        // Metodo per scrivere in un file output per la verifica (Momentaneo)
-        public static void WriteDDTToFile(DocumentoToImport doc)
-        {
-            string outputPath = "output.txt";
-            using (StreamWriter writer = new StreamWriter(outputPath))
-            {
-                writer.WriteLine("=== DATI DOCUMENTO ===");
-                writer.WriteLine($"Fornitore: {doc.FornitoreDescrizione}");
-                writer.WriteLine($"Tipo Documento: {doc.DocTipo}");
-                writer.WriteLine($"Numero: {doc.DocNumero}");
-                writer.WriteLine($"Data: {doc.DocData:dd/MM/yyyy}");
-                writer.WriteLine($"Codice_Cliente: {doc.FornitoreCodice}");
-                writer.WriteLine($"NOME_Cliente: {doc.Cliente}");
-                writer.WriteLine($"Destinazione: {doc.DestinazioneMerce1}");
-                writer.WriteLine($"             {doc.DestinazioneMerce2}");
-                writer.WriteLine($"Riferimento Ordine Fornitore: {doc.RifOrdineFornitore}");
-                writer.WriteLine($"Riferimento Ordine Cliente: {doc.RifOrdineCliente}");
-                writer.WriteLine($"Note: {doc.Note}");
-                writer.WriteLine($"Trasporto Data: {doc.TrasportoData}");
-                writer.WriteLine($"Trasporto Note: {doc.TrasportoNote}");
-                writer.WriteLine($"Documento Verificato: {doc.Verificato}");
-
-                // Scrivi i dettagli delle prime 3 righe
-                for (int i = 0; i < Math.Min(3, doc.RigheDelDoc.Count); i++)
-                {
-                    var riga = doc.RigheDelDoc[i];
-                    writer.WriteLine($"\n=== RIGA {i + 1} ===");
-                    writer.WriteLine($"Numero Riga: {riga.RigaNumero}");
-                    writer.WriteLine($"Tipo Riga: {riga.RigaTipo}");
-                    writer.WriteLine($"Articolo - Codice Generico: {riga.ArticoloCodiceGenerico}");
-                    writer.WriteLine($"Articolo - Codice Fornitore: {riga.ArticoloCodiceFornitore}");
-                    writer.WriteLine($"Articolo - Codice Produttore: {riga.ArticoloCodiceProduttore}");
-                    writer.WriteLine($"Data ordine: {riga.DataOrdine}");
-                    writer.WriteLine($"Articolo - Marca: {riga.ArticoloMarca}");
-                    writer.WriteLine($"Articolo - Descrizione: {riga.ArticoloDescrizione}");
-                    writer.WriteLine($"Articolo - Barcode: {riga.ArticoloBarcode}");
-                    writer.WriteLine($"Articolo - Agile ID: {riga.Articolo_AgileID}");
-                    writer.WriteLine($"Quantità: {riga.Qta}");
-                    writer.WriteLine($"Unità di Misura: {riga.UM}");
-                    writer.WriteLine($"Confezione: {riga.Confezione}");
-                    writer.WriteLine($"Prezzo Unitario: {riga.PrezzoUnitario:C2}");
-                    writer.WriteLine($"Sconti: {riga.Sconto1}% + {riga.Sconto2}% + {riga.Sconto3}%");
-                    writer.WriteLine($"Prezzo Totale: {riga.PrezzoTotale:C2}");
-                    writer.WriteLine($"Prezzo Totale Scontato: {riga.PrezzoTotaleScontato:C2}");
-                    writer.WriteLine($"IVA Codice: {riga.IVACodice}");
-                    writer.WriteLine($"IVA Aliquota: {riga.IVAAliquota}%");
-                    writer.WriteLine($"Rif. Ordine Fornitore: {riga.RifOrdineFornitore}");
-                    writer.WriteLine($"Rif. Ordine Cliente: {riga.RifOrdineCliente}");
-                    writer.WriteLine($"Destinazione Merce: {riga.DestinazioneMerce}");
-                }
-
-                writer.WriteLine($"\nTotale righe nel documento: {doc.RigheDelDoc.Count}");
-            }
-        }
-    }
 }
- //C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\Wuerth CSV - DDT_8826546665_20240503_154226.csv
- //C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\SVAI ddt.csv
- //C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\Spazio-esportazione (4).csv
- //C:\Users\kevin\OneDrive\Documenti\lavoro\Import DDT\innerhofer E082_2024-01-0-80377.txt
-
-
 
     
 
