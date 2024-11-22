@@ -308,6 +308,24 @@ namespace DDTImport
 
                 try
                 {
+
+                    // Valori non salvati nel documento
+                    var valore1 = values[columnIndexes["LETTERA_DI_VETTURA"]].Trim();              // Valore non salvato
+                    var valore2 = values[columnIndexes["CENTRO_DI_COSTO"]].Trim();                 // Valore non salvato
+                    var valore3 = values[columnIndexes["NOTA"]].Trim();                            // Valore non salvato
+                    var valore4 = values[columnIndexes["LOTTO"]].Trim();                           // Valore non salvato
+                    var valore5 = values[columnIndexes["AVVISO_DI_CONSEGNA"]].Trim();              // Valore non salvato
+                    var valore6 = values[columnIndexes["NUMERO_SERIALE"]].Trim();                  // Valore non salvato
+                    var valore7 = values[columnIndexes["STATO_ORIGINE_MERCE"]].Trim();             // Valore non salvato
+                    var valore8 = values[columnIndexes["DISPONENT"]].Trim();                       // Valore non salvato
+                    var valore9 = values[columnIndexes["CODICE_DEALER_COMMITTENTE"]].Trim();        // Valore non salvato
+                    var valore10 = values[columnIndexes["CODICE_DEALER_DESTINATARIO_MERCI"]].Trim(); // Valore non salvato
+                    var valore11 = values[columnIndexes["NUMERO_POS_ORDINE_CLIENTE"]].Trim();       // Valore non salvato
+                    var valore12 = values[columnIndexes["NUMERO_POSIZIONE_ORDINE"]].Trim();         // Valore non salvato
+                    var valore13 = values[columnIndexes["UNITA_PREZZO"]].Trim();                    // Valore non salvato
+                    var valore14 = values[columnIndexes["TOTALE_IVA"]].Trim();                      // Valore non salvato
+                    var valore15 = values[columnIndexes["DATA_ORDINE"]].Trim();
+
                     // Per la prima riga, imposta i dati del documento
                     if (documento.DocNumero == null)
                     {
@@ -334,7 +352,7 @@ namespace DDTImport
 
                     // Crea una nuova riga
                     var riga = new RigaDet
-                    {
+                    {          
                         RigaNumero = int.Parse(values[columnIndexes["NUMERO_POS_DDT"]].Trim().TrimStart('0')), // NUMERO_POS_DDT senza gli zero iniziali
                         ArticoloCodiceFornitore = values[columnIndexes["CODICE_PRODOTTO"]].Trim(),           // CODICE_PRODOTTO
                         ArticoloDescrizione = values[columnIndexes["DESCRIZIONE_PRODOTTO"]].Trim(),         // DESCRIZIONE_PRODOTTO
@@ -419,6 +437,15 @@ namespace DDTImport
 
                 try
                 {
+
+                    // Valori non attualmente salvati nel documento
+                    var valore1 = fields[columnIndexes["Rag_Soc_1"]].Trim();                // Valore non salvato
+                    var valore2 = fields[columnIndexes["Rag_Soc_2"]].Trim();                // Valore non salvato
+                    var valore3 = fields[columnIndexes["Indirizzo"]].Trim();                // Valore non salvato
+                    var valore4 = fields[columnIndexes["CAP"]].Trim();                      // Valore non salvato
+                    var valore5 = fields[columnIndexes["Localita"]].Trim();                 // Valore non salvato
+                    var valore6 = fields[columnIndexes["Provincia"]].Trim();
+
                     // Elaboriamo solo la prima riga per i dati del documento
                     if (firstRow)
                     {
@@ -520,12 +547,18 @@ namespace DDTImport
             {
                 try
                 {
+                    
+
                     // Rimuove caratteri indesiderati dalla riga
                     var line = CleanText(lines[i]);  // Rimuove caratteri non stampabili (ad esempio &nbsp;)
 
                     var fields = line.Split(';')
                         .Select(f => f.Trim())  // Rimuove spazi extra da ogni campo
                         .ToArray();
+
+
+                    // Per SPAZIO, uso gli header esatti come definiti
+                    var valore1 = fields[columnIndexes["N� ORDINE"]].Trim();        // Valore non salvato
 
                     // Se la riga non ha un numero sufficiente di campi, la saltiamo
                     if (fields.Length < headers.Count) continue;
